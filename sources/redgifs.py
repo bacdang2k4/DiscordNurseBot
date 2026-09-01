@@ -9,6 +9,9 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 }
 
+# Xoay đều 6 order để tránh trùng
+ORDERS = ["latest", "trending", "top7", "top28", "top", "score"]
+
 _GAY = {
     "gay", "gays", "gay sex", "gay porn", "gay male", "gay men", "gay man",
     "gay couple", "gay couples", "gay twink", "gay anal", "gay blowjob",
@@ -60,7 +63,8 @@ _HENTAI_GAY = {"yaoi", "bara", "gay hentai", "bara hentai"}
 
 BLOCKED_TAGS = _GAY | _GAY_SCENE | _FEMBOY | _TRANS | _SOLO_MALE | _HENTAI_GAY
 
-_recent_ids: deque = deque(maxlen=50)
+# Lưu 200 ID gần nhất để không trùng
+_recent_ids: deque = deque(maxlen=200)
 
 
 async def _get_token() -> str | None:
@@ -79,48 +83,56 @@ def _is_clean(gif: dict) -> bool:
     return not tags.intersection(BLOCKED_TAGS)
 
 
-async def search_redgifs(query: str, count: int = 20):
+async def _fetch(session, auth_headers: dict, tags_str: str, order: str, page: int, count: int = 40):
+    params = {"type": "g", "tags": tags_str, "order": order, "count": count, "page": page}
+    async with session.get(
+        REDGIFS_SEARCH, params=params, timeout=aiohttp.ClientTimeout(total=15)
+    ) as resp:
+        if resp.status != 200:
+            print(f"[REDGIFS] status={resp.status} order={order} page={page}")
+            return None
+        return await resp.json(content_type=None)
+
+
+async def search_redgifs(query: str):
     token = await _get_token()
     if not token:
         return None
 
-    # Chuyển "anal asian" → "Anal,Asian"
-    tags = ",".join(w.capitalize() for w in query.strip().split())
-
-    params = {
-        "type": "g",
-        "tags": tags,
-        "order": "top28",
-        "count": count,
-        "page": 1,
-    }
+    tags_str = ",".join(w.capitalize() for w in query.strip().split())
+    order = random.choice(ORDERS)
     auth_headers = {**HEADERS, "Authorization": f"Bearer {token}"}
 
     try:
         async with aiohttp.ClientSession(headers=auth_headers) as session:
-            async with session.get(
-                REDGIFS_SEARCH,
-                params=params,
-                timeout=aiohttp.ClientTimeout(total=15)
-            ) as resp:
-                print(f"[REDGIFS] status={resp.status} tags={tags}")
-                if resp.status != 200:
-                    return None
-                data = await resp.json(content_type=None)
+            # Request 1: lấy tổng số trang
+            first = await _fetch(session, auth_headers, tags_str, order, page=1)
+            if not first:
+                return None
 
-        gifs = [
+            total_pages = max(1, min(first.get("pages", 1), 30))
+            page = random.randint(1, total_pages)
+
+            # Request 2: chỉ gọi thêm nếu không phải trang 1
+            data = first if page == 1 else await _fetch(session, auth_headers, tags_str, order, page) or first
+
+        print(f"[REDGIFS] order={order} page={page}/{total_pages} tags={tags_str}")
+
+        pool = [
             g for g in (data.get("gifs") or [])
             if _is_clean(g) and g.get("id") not in _recent_ids
         ]
 
-        if not gifs:
+        if not pool:
+            # Hết pool → reset seen, fallback về trang 1
             _recent_ids.clear()
-            gifs = [g for g in (data.get("gifs") or []) if _is_clean(g)]
+            pool = [g for g in (first.get("gifs") or []) if _is_clean(g)]
 
-        if not gifs:
+        if not pool:
             return None
 
-        gif = random.choice(gifs)
+        random.shuffle(pool)
+        gif = pool[0]
         _recent_ids.append(gif.get("id"))
 
         urls = gif.get("urls", {})
