@@ -11,6 +11,7 @@ from sources.reddit_image import search_reddit_image
 from sources.reddit_video import search_reddit_video
 from sources.neko import get_neko, get_supported_types
 from sources.purr import get_purr, get_purr_types
+from sources.rule34 import search_rule34
 
 
 # ============================================================
@@ -30,6 +31,7 @@ if not TOKEN:
 # ============================================================
 
 intents = discord.Intents.default()
+intents.message_content = True
 
 bot = commands.Bot(
     command_prefix="!",
@@ -63,6 +65,11 @@ async def check_cooldown(interaction: discord.Interaction) -> bool:
 
 def is_valid_url(url: str) -> bool:
     return isinstance(url, str) and url.startswith(("http://", "https://"))
+
+
+def is_nsfw(interaction: discord.Interaction) -> bool:
+    ch = interaction.channel
+    return isinstance(ch, discord.TextChannel) and ch.is_nsfw()
 
 
 # ============================================================
@@ -140,6 +147,11 @@ async def help_command(interaction: discord.Interaction):
         inline=False
     )
     embed.add_field(
+        name="🔞 `/r34 <tags>`",
+        value="Tìm ảnh/video từ Rule34\nVí dụ: `/r34 asian` | `/r34 hentai blowjob`",
+        inline=False
+    )
+    embed.add_field(
         name="🏓 `/ping`",
         value="Kiểm tra bot",
         inline=False
@@ -154,7 +166,7 @@ async def help_command(interaction: discord.Interaction):
 @bot.tree.command(name="image", description="Tìm ảnh NSFW từ Reddit (ưu tiên châu Á)")
 @app_commands.describe(query="Từ khóa tìm kiếm, ví dụ: anal, asian")
 async def image(interaction: discord.Interaction, query: str):
-    if not interaction.channel.is_nsfw():
+    if not is_nsfw(interaction):
         return await interaction.response.send_message(
             "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
         )
@@ -194,7 +206,7 @@ async def image(interaction: discord.Interaction, query: str):
 @bot.tree.command(name="video", description="Tìm video NSFW từ Reddit (ưu tiên châu Á)")
 @app_commands.describe(query="Từ khóa tìm kiếm, ví dụ: blowjob, asian")
 async def video(interaction: discord.Interaction, query: str):
-    if not interaction.channel.is_nsfw():
+    if not is_nsfw(interaction):
         return await interaction.response.send_message(
             "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
         )
@@ -236,7 +248,7 @@ async def video(interaction: discord.Interaction, query: str):
 @app_commands.describe(type="Loại ảnh, ví dụ: ass, pussy, random")
 @app_commands.autocomplete(type=neko_autocomplete)
 async def neko(interaction: discord.Interaction, type: str = "random"):
-    if not interaction.channel.is_nsfw():
+    if not is_nsfw(interaction):
         return await interaction.response.send_message(
             "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
         )
@@ -281,7 +293,7 @@ async def neko(interaction: discord.Interaction, type: str = "random"):
 @app_commands.describe(type="Loại ảnh, ví dụ: anal, blowjob, yuri")
 @app_commands.autocomplete(type=purr_autocomplete)
 async def purr(interaction: discord.Interaction, type: str = "neko"):
-    if not interaction.channel.is_nsfw():
+    if not is_nsfw(interaction):
         return await interaction.response.send_message(
             "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
         )
@@ -319,12 +331,85 @@ async def purr(interaction: discord.Interaction, type: str = "neko"):
 
 
 # ============================================================
+# /rule34 <tags>
+# ============================================================
+
+@bot.tree.command(name="r34", description="Tìm kiếm ảnh/video từ Rule34 theo tags")
+@app_commands.describe(tags="Tags tìm kiếm, cách nhau bằng dấu cách. Ví dụ: asian blowjob")
+async def r34(interaction: discord.Interaction, tags: str):
+    if not is_nsfw(interaction):
+        return await interaction.response.send_message(
+            "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
+        )
+
+    if not await check_cooldown(interaction):
+        return
+
+    await interaction.response.defer()
+
+    try:
+        result = await search_rule34(tags)
+
+        if not result or not is_valid_url(result.get("url")):
+            return await interaction.edit_original_response(content="❌ Không tìm thấy kết quả. Thử tags khác.")
+
+        tag_list = result["tags"].split()[:8]
+        tag_display = " ".join(f"`{t}`" for t in tag_list)
+
+        embed = discord.Embed(
+            title=f"Rule34 • {tags}",
+            url=result["post_url"],
+            color=discord.Color.from_rgb(0, 153, 255)
+        )
+        embed.add_field(name="Tags", value=tag_display or "—", inline=False)
+        embed.add_field(name="Score", value=str(result["score"]), inline=True)
+        embed.add_field(name="ID", value=str(result["id"]), inline=True)
+        embed.set_footer(text=f"{interaction.user.display_name} • rule34.xxx")
+
+        if result["is_video"]:
+            embed.description = f"🎬 **Video:** {result['url']}"
+            await interaction.edit_original_response(embed=embed)
+            await interaction.followup.send(result["url"])
+        else:
+            embed.set_image(url=result["url"])
+            await interaction.edit_original_response(embed=embed)
+
+    except Exception as e:
+        print(f"[RULE34 CMD] {e}")
+        await interaction.edit_original_response(content="❌ Lỗi khi tìm kiếm.")
+
+
+# ============================================================
 # /ping
 # ============================================================
 
 @bot.tree.command(name="ping", description="Kiểm tra độ trễ của bot")
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message(f"🏓 Pong! `{round(bot.latency * 1000)} ms`")
+
+
+# ============================================================
+# /sync  (chỉ bot owner dùng được)
+# ============================================================
+
+@bot.tree.command(name="sync", description="Sync slash commands (chỉ owner)")
+async def sync_slash(interaction: discord.Interaction):
+    if interaction.user.id != (await bot.application_info()).owner.id:
+        return await interaction.response.send_message("❌ Chỉ owner mới dùng được.", ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+    synced = await bot.tree.sync()
+    await interaction.edit_original_response(content=f"✅ Đã sync **{len(synced)}** lệnh.")
+
+
+# Prefix command !sync — dùng được ngay mà không cần restart
+@bot.command(name="sync")
+async def sync_prefix(ctx):
+    app_info = await bot.application_info()
+    if ctx.author.id != app_info.owner.id:
+        return await ctx.send("❌ Chỉ owner mới dùng được.")
+    msg = await ctx.send("⏳ Đang sync...")
+    synced = await bot.tree.sync()
+    await msg.edit(content=f"✅ Đã sync **{len(synced)}** slash command(s).")
 
 
 # ============================================================
