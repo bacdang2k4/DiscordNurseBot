@@ -1,20 +1,15 @@
 import os
+import time
+from collections import defaultdict
 
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from sources.images import search_image
-from sources.videos import search_video
-from sources.reddit import get_random_reddit_post
-
-from utils.cooldown import (
-    CooldownManager
-)
-
-from utils.media import (
-    is_valid_url
-)
+from sources.reddit_image import search_reddit_image
+from sources.reddit_video import search_reddit_video
+from sources.nekobot_image import get_nekobot_image
+from sources.nekobot_video import get_nekobot_video
 
 
 # ============================================================
@@ -23,30 +18,18 @@ from utils.media import (
 
 load_dotenv()
 
-TOKEN = os.getenv(
-    "DISCORD_TOKEN"
-)
-
+TOKEN = os.getenv("DISCORD_TOKEN")
 
 if not TOKEN:
-
-    raise RuntimeError(
-        "Không tìm thấy DISCORD_TOKEN trong .env"
-    )
+    raise RuntimeError("Không tìm thấy DISCORD_TOKEN trong .env")
 
 
 # ============================================================
-# DISCORD INTENTS
+# INTENTS
 # ============================================================
 
 intents = discord.Intents.default()
-
 intents.message_content = True
-
-
-# ============================================================
-# BOT
-# ============================================================
 
 bot = commands.Bot(
     command_prefix=".",
@@ -59,121 +42,48 @@ bot = commands.Bot(
 # COOLDOWN
 # ============================================================
 
-cooldown = CooldownManager(
-    cooldown_seconds=10
-)
+user_cooldowns = defaultdict(float)
+COOLDOWN_SECONDS = 8
 
-
-# ============================================================
-# CHECK COOLDOWN
-# ============================================================
 
 async def check_cooldown(ctx):
+    now = time.time()
+    last = user_cooldowns[ctx.author.id]
 
-    allowed, remaining = cooldown.check(
-        ctx.author.id
-    )
-
-    if not allowed:
-
-        await ctx.send(
-            f"⏳ Bạn cần đợi "
-            f"**{remaining:.1f} giây** "
-            f"trước khi sử dụng lệnh tiếp."
-        )
-
+    if now - last < COOLDOWN_SECONDS:
+        remaining = COOLDOWN_SECONDS - (now - last)
+        await ctx.send(f"⏳ Bạn cần đợi **{remaining:.1f} giây**.")
         return False
 
+    user_cooldowns[ctx.author.id] = now
     return True
 
 
+def is_valid_url(url: str) -> bool:
+    return isinstance(url, str) and url.startswith(("http://", "https://"))
+
+
 # ============================================================
-# BOT READY
+# EVENTS
 # ============================================================
 
 @bot.event
 async def on_ready():
-
-    print("=" * 60)
-
-    print(
-        f"Bot online: {bot.user}"
-    )
-
-    print(
-        f"Bot ID: {bot.user.id}"
-    )
-
-    print(
-        f"Servers: {len(bot.guilds)}"
-    )
-
-    print("=" * 60)
-
-    await bot.change_presence(
-        activity=discord.Game(
-            name=".help | Media Bot"
-        )
-    )
+    print("=" * 50)
+    print(f"Bot online: {bot.user}")
+    print(f"Servers: {len(bot.guilds)}")
+    print("=" * 50)
+    await bot.change_presence(activity=discord.Game(name=".image | .video | NSFW"))
 
 
-# ============================================================
-# PING
-# ============================================================
-
-@bot.command()
-async def ping(ctx):
-
-    latency = round(
-        bot.latency * 1000
-    )
-
-    await ctx.send(
-        f"🏓 Pong! `{latency} ms`"
-    )
-
-
-# ============================================================
-# BOT INFO
-# ============================================================
-
-@bot.command()
-async def botinfo(ctx):
-
-    embed = discord.Embed(
-        title="🤖 DiscordNurseBot",
-        description=(
-            "Bot tìm kiếm media "
-            "từ nhiều nguồn."
-        ),
-        color=discord.Color.blue()
-    )
-
-    embed.add_field(
-        name="Servers",
-        value=str(
-            len(bot.guilds)
-        ),
-        inline=True
-    )
-
-    embed.add_field(
-        name="Latency",
-        value=(
-            f"{round(bot.latency * 1000)} ms"
-        ),
-        inline=True
-    )
-
-    embed.add_field(
-        name="Prefix",
-        value=".",
-        inline=True
-    )
-
-    await ctx.send(
-        embed=embed
-    )
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        return
+    if isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send("❌ Thiếu từ khóa.\nVí dụ: `.image asia anal`")
+        return
+    print(f"[ERROR] {error}")
 
 
 # ============================================================
@@ -182,440 +92,164 @@ async def botinfo(ctx):
 
 @bot.command(name="help")
 async def help_command(ctx):
-
     embed = discord.Embed(
-        title="📖 DiscordNurseBot",
-        description=(
-            "Các lệnh có sẵn:"
-        ),
-        color=discord.Color.blue()
+        title="📖 NSFW Bot",
+        description="**Chỉ dùng trong kênh NSFW**",
+        color=discord.Color.dark_red()
     )
-
     embed.add_field(
-        name="🖼️ `.image <keyword>`",
-        value=(
-            "Tìm ảnh trên Pexels.\n"
-            "Ví dụ: `.image cat`"
-        ),
+        name="🖼️ `.image <từ khóa>`",
+        value="Tìm ảnh NSFW\nVí dụ: `.image asia anal`",
         inline=False
     )
-
     embed.add_field(
-        name="🎬 `.video <keyword>`",
-        value=(
-            "Tìm video trên Pexels.\n"
-            "Ví dụ: `.video minecraft`"
-        ),
+        name="🎬 `.video <từ khóa>`",
+        value="Tìm video NSFW\nVí dụ: `.video blowjob`",
         inline=False
     )
-
     embed.add_field(
-        name="🔴 `.reddit`",
-        value=(
-            "Lấy một bài media SFW "
-            "từ Reddit."
-        ),
+        name="🔥 `.nude`",
+        value="Ảnh nude ngẫu nhiên (NekoBot)",
         inline=False
     )
-
     embed.add_field(
         name="🏓 `.ping`",
-        value=(
-            "Kiểm tra bot."
-        ),
+        value="Kiểm tra bot",
         inline=False
     )
-
-    embed.add_field(
-        name="ℹ️ `.botinfo`",
-        value=(
-            "Thông tin bot."
-        ),
-        inline=False
-    )
-
-    await ctx.send(
-        embed=embed
-    )
+    await ctx.send(embed=embed)
 
 
 # ============================================================
-# IMAGE
+# .image <query>
 # ============================================================
 
-@bot.command()
+@bot.command(name="image")
 async def image(ctx, *, query: str = None):
+    if not ctx.channel.is_nsfw():
+        return await ctx.send("❌ Chỉ dùng trong kênh **NSFW**!")
 
     if not query:
-
-        await ctx.send(
-            "❌ Ví dụ:\n"
-            "`.image cat`"
-        )
-
-        return
-
+        return await ctx.send("❌ Ví dụ: `.image asia anal`")
 
     if not await check_cooldown(ctx):
         return
 
-
-    processing = await ctx.send(
-        "🔍 Đang tìm ảnh..."
-    )
-
+    msg = await ctx.send(f"🔍 Đang tìm ảnh: **{query}**...")
 
     try:
+        result = await search_reddit_image(query)
 
-        result = await search_image(
-            query
-        )
-
-        if not result:
-
-            await processing.edit(
-                content=(
-                    "❌ Không tìm thấy ảnh."
-                )
-            )
-
-            return
-
-
-        url = result["url"]
-
-
-        if not is_valid_url(url):
-
-            await processing.edit(
-                content=(
-                    "❌ URL ảnh không hợp lệ."
-                )
-            )
-
-            return
-
+        if not result or not is_valid_url(result.get("url")):
+            return await msg.edit(content="❌ Không tìm thấy ảnh.")
 
         embed = discord.Embed(
-            title=(
-                f"🖼️ {result['title']}"
-            ),
-            color=discord.Color.green()
+            title=result["title"][:200],
+            url=result.get("permalink"),
+            color=discord.Color.dark_red()
         )
+        embed.set_image(url=result["url"])
+        embed.add_field(name="Subreddit", value=f"r/{result['subreddit']}", inline=True)
+        embed.add_field(name="Upvotes", value=str(result["score"]), inline=True)
+        embed.set_footer(text=f"{ctx.author.display_name} • {query}")
 
-
-        embed.set_image(
-            url=url
-        )
-
-
-        embed.add_field(
-            name="Nguồn",
-            value="Pexels",
-            inline=True
-        )
-
-
-        embed.add_field(
-            name="Tác giả",
-            value=result.get(
-                "photographer",
-                "Unknown"
-            ),
-            inline=True
-        )
-
-
-        if result.get("page_url"):
-
-            embed.url = result[
-                "page_url"
-            ]
-
-
-        embed.set_footer(
-            text=(
-                f"Requested by "
-                f"{ctx.author.display_name}"
-            )
-        )
-
-
-        await processing.delete()
-
-        await ctx.send(
-            embed=embed
-        )
-
+        await msg.delete()
+        await ctx.send(embed=embed)
 
     except Exception as e:
-
-        print(
-            f"[IMAGE ERROR] {e}"
-        )
-
-        await processing.edit(
-            content=(
-                "❌ Có lỗi khi tìm ảnh."
-            )
-        )
+        print(f"[IMAGE] {e}")
+        await msg.edit(content="❌ Lỗi khi tìm ảnh.")
 
 
 # ============================================================
-# VIDEO
+# .video <query>
 # ============================================================
 
-@bot.command()
+@bot.command(name="video")
 async def video(ctx, *, query: str = None):
+    if not ctx.channel.is_nsfw():
+        return await ctx.send("❌ Chỉ dùng trong kênh **NSFW**!")
 
     if not query:
-
-        await ctx.send(
-            "❌ Ví dụ:\n"
-            "`.video minecraft`"
-        )
-
-        return
-
+        return await ctx.send("❌ Ví dụ: `.video asia anal`")
 
     if not await check_cooldown(ctx):
         return
 
-
-    processing = await ctx.send(
-        "🔍 Đang tìm video..."
-    )
-
+    msg = await ctx.send(f"🔍 Đang tìm video: **{query}**...")
 
     try:
+        result = await search_reddit_video(query)
 
-        result = await search_video(
-            query
-        )
-
-
-        if not result:
-
-            await processing.edit(
-                content=(
-                    "❌ Không tìm thấy video."
-                )
-            )
-
-            return
-
-
-        url = result["url"]
-
-
-        if not is_valid_url(url):
-
-            await processing.edit(
-                content=(
-                    "❌ URL video không hợp lệ."
-                )
-            )
-
-            return
-
+        if not result or not is_valid_url(result.get("url")):
+            return await msg.edit(content="❌ Không tìm thấy video.")
 
         embed = discord.Embed(
-            title=(
-                f"🎬 {result['title']}"
-            ),
-            description=(
-                f"⏱️ Thời lượng: "
-                f"{result.get('duration', '?')} giây"
-            ),
+            title=result["title"][:200],
+            url=result.get("permalink"),
+            description=f"**Link:** {result['url']}",
             color=discord.Color.purple()
         )
+        embed.add_field(name="Subreddit", value=f"r/{result['subreddit']}", inline=True)
+        embed.add_field(name="Upvotes", value=str(result["score"]), inline=True)
+        embed.set_footer(text=f"{ctx.author.display_name} • {query}")
 
-
-        if result.get("page_url"):
-
-            embed.url = result[
-                "page_url"
-            ]
-
-
-        embed.add_field(
-            name="Video",
-            value=(
-                f"[▶️ Xem video]({url})"
-            ),
-            inline=False
-        )
-
-
-        embed.set_footer(
-            text=(
-                f"Requested by "
-                f"{ctx.author.display_name}"
-            )
-        )
-
-
-        await processing.delete()
-
-        await ctx.send(
-            embed=embed
-        )
-
+        await msg.delete()
+        await ctx.send(embed=embed)
+        await ctx.send(result["url"])   # gửi link để Discord preview
 
     except Exception as e:
-
-        print(
-            f"[VIDEO ERROR] {e}"
-        )
-
-        await processing.edit(
-            content=(
-                "❌ Có lỗi khi tìm video."
-            )
-        )
+        print(f"[VIDEO] {e}")
+        await msg.edit(content="❌ Lỗi khi tìm video.")
 
 
 # ============================================================
-# REDDIT
+# .nude (random từ NekoBot)
 # ============================================================
 
-@bot.command()
-async def reddit(ctx):
+@bot.command(name="nude")
+async def nude(ctx):
+    if not ctx.channel.is_nsfw():
+        return await ctx.send("❌ Chỉ dùng trong kênh **NSFW**!")
 
     if not await check_cooldown(ctx):
         return
 
-
-    processing = await ctx.send(
-        "🔍 Đang lấy media từ Reddit..."
-    )
-
+    msg = await ctx.send("🔍 Đang lấy ảnh nude...")
 
     try:
+        result = await get_nekobot_image()
 
-        result = await get_random_reddit_post()
-
-
-        if not result:
-
-            await processing.edit(
-                content=(
-                    "❌ Không tìm thấy media Reddit."
-                )
-            )
-
-            return
-
-
-        url = result["url"]
-
-
-        if not is_valid_url(url):
-
-            await processing.edit(
-                content=(
-                    "❌ URL Reddit không hợp lệ."
-                )
-            )
-
-            return
-
+        if not result or not is_valid_url(result.get("url")):
+            return await msg.edit(content="❌ Không lấy được ảnh.")
 
         embed = discord.Embed(
-            title=(
-                f"🔴 r/{result['subreddit']}"
-            ),
-            description=(
-                result["title"][:300]
-            ),
-            url=result["permalink"],
-            color=discord.Color.red()
+            title=result["title"],
+            color=discord.Color.dark_magenta()
         )
+        embed.set_image(url=result["url"])
+        embed.set_footer(text=f"NekoBot • {ctx.author.display_name}")
 
-
-        embed.set_image(
-            url=url
-        )
-
-
-        embed.add_field(
-            name="Upvotes",
-            value=str(
-                result["score"]
-            ),
-            inline=True
-        )
-
-
-        embed.set_footer(
-            text=(
-                f"Requested by "
-                f"{ctx.author.display_name}"
-            )
-        )
-
-
-        await processing.delete()
-
-        await ctx.send(
-            embed=embed
-        )
-
+        await msg.delete()
+        await ctx.send(embed=embed)
 
     except Exception as e:
-
-        print(
-            f"[REDDIT ERROR] {e}"
-        )
-
-        await processing.edit(
-            content=(
-                "❌ Không thể lấy dữ liệu Reddit.\n"
-                "Kiểm tra Reddit API credentials."
-            )
-        )
+        print(f"[NUDE] {e}")
+        await msg.edit(content="❌ Lỗi.")
 
 
 # ============================================================
-# ERROR HANDLER
+# .ping
 # ============================================================
 
-@bot.event
-async def on_command_error(
-    ctx,
-    error
-):
-
-    if isinstance(
-        error,
-        commands.CommandNotFound
-    ):
-        return
-
-
-    if isinstance(
-        error,
-        commands.MissingRequiredArgument
-    ):
-
-        await ctx.send(
-            "❌ Thiếu thông tin cho lệnh."
-        )
-
-        return
-
-
-    print(
-        f"[COMMAND ERROR] {error}"
-    )
+@bot.command()
+async def ping(ctx):
+    await ctx.send(f"🏓 Pong! `{round(bot.latency * 1000)} ms`")
 
 
 # ============================================================
 # START
 # ============================================================
 
-print(
-    "Đang khởi động DiscordNurseBot..."
-)
-
+print("Đang khởi động NSFW Bot...")
 bot.run(TOKEN)
