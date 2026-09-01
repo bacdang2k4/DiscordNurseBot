@@ -3,7 +3,7 @@ from collections import deque
 from redgifs.aio import API
 from redgifs import Order
 
-GAY_TAGS = {"gay", "male_only", "yaoi", "bara", "men_only"}
+GAY_TAGS = {"gay", "male_only", "yaoi", "bara", "men_only", "gay_sex", "gay_male", "femboy", "gay_male_only", "gay_male_sex"}
 
 # Lưu 50 ID gần nhất để không lặp
 _recent_ids: deque = deque(maxlen=50)
