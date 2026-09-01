@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from sources.reddit_image import search_reddit_image
 from sources.reddit_video import search_reddit_video
 from sources.neko import get_neko, get_supported_types
+from sources.purr import get_purr, get_purr_types
 
 
 # ============================================================
@@ -108,11 +109,12 @@ async def help_command(ctx):
     )
     embed.add_field(
         name="🌸 `.neko <type>`",
-        value=(
-            "Ảnh từ NekoBot\n"
-            "Ví dụ: `.neko ass` | `.neko pussy` | `.neko random`\n"
-            f"Type: `ass`, `pussy`, `boobs`, `anal`, `thigh`, `4k`, `hentai`..."
-        ),
+        value="Ảnh từ NekoBot\nVí dụ: `.neko ass` | `.neko random`",
+        inline=False
+    )
+    embed.add_field(
+        name="🐱 `.purr <type>`",
+        value="Ảnh/GIF từ PurrBot\nVí dụ: `.purr anal` | `.purr yuri`",
         inline=False
     )
     embed.add_field(
@@ -251,6 +253,49 @@ async def neko(ctx, type_: str = "random"):
         print(f"[NEKO CMD ERROR] {e}")
         await msg.edit(content="❌ Có lỗi xảy ra.")
 
+# ============================================================
+# .purr <type>
+# ============================================================
+
+@bot.command(name="purr")
+async def purr(ctx, type_: str = "neko"):
+    if not ctx.channel.is_nsfw():
+        return await ctx.send("❌ Chỉ dùng trong kênh **NSFW**!")
+
+    if not await check_cooldown(ctx):
+        return
+
+    type_ = type_.lower().strip()
+    supported = get_purr_types()
+
+    if type_ not in supported:
+        return await ctx.send(
+            f"❌ Type không hợp lệ.\n"
+            f"Các type hỗ trợ: `{'`, `'.join(supported)}`\n"
+            f"Ví dụ: `.purr anal` | `.purr blowjob` | `.purr yuri`"
+        )
+
+    msg = await ctx.send(f"🔍 Đang lấy **{type_}** từ PurrBot...")
+
+    try:
+        result = await get_purr(type_)
+
+        if not result or not is_valid_url(result.get("url")):
+            return await msg.edit(content="❌ Không lấy được ảnh.")
+
+        embed = discord.Embed(
+            title=result["title"],
+            color=discord.Color.orange()
+        )
+        embed.set_image(url=result["url"])
+        embed.set_footer(text=f"PurrBot • {ctx.author.display_name}")
+
+        await msg.delete()
+        await ctx.send(embed=embed)
+
+    except Exception as e:
+        print(f"[PURR CMD ERROR] {e}")
+        await msg.edit(content="❌ Có lỗi xảy ra.")
 
 # ============================================================
 # .ping
