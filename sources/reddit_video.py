@@ -20,10 +20,27 @@ if REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET and REDDIT_USER_AGENT:
     )
 
 
-NSFW_SUBS = [
-    "nsfw", "nsfw_gif", "porn", "AnalGW", "anal",
-    "asiansgonewild", "AsianNSFW", "JapanesePorn2",
-    "gonewild", "RealGirls"
+ASIAN_SUBS = [
+    "asiansgonewild",
+    "AsianNSFW",
+    "JapanesePorn2",
+    "NSFW_Japan",
+    "AsianHotties",
+    "ChineseGoneWild",
+    "KoreanNSFW",
+    "ThaiGoneWild",
+    "bustyasians",
+    "AsianCumsluts",
+    "AnalGW",
+]
+
+ASIAN_KEYWORDS = [
+    "asian",
+    "japanese",
+    "japanese girl",
+    "korean",
+    "chinese",
+    "thai",
 ]
 
 
@@ -33,47 +50,57 @@ def _search_video_sync(query: str):
 
     results = []
 
-    # 1. Search toàn site
-    try:
-        for post in reddit.subreddit("all").search(query, sort="hot", limit=40):
-            if not post.over_18:
-                continue
-            if post.stickied:
-                continue
+    query_lower = query.lower()
+    has_asian_word = any(k in query_lower for k in ["asia", "asian", "japan", "korean", "chinese", "thai", "viet"])
 
-            url = (post.url or "").lower()
-            is_video = (
-                post.is_video
-                or "v.redd.it" in url
-                or url.endswith((".mp4", ".gifv", ".webm"))
-                or "redgifs.com" in url
-                or "gfycat.com" in url
-            )
+    if not has_asian_word:
+        asian_kw = random.choice(ASIAN_KEYWORDS)
+        search_query = f"{asian_kw} {query}"
+    else:
+        search_query = query
 
-            if is_video and post.url:
-                results.append(post)
-    except Exception as e:
-        print(f"[PRAW VIDEO SEARCH ERROR] {e}")
+    print(f"[SEARCH VIDEO] Gốc: {query} → Thực tế: {search_query}")
 
-    # 2. Tìm thêm trong sub NSFW nếu ít kết quả
-    if len(results) < 5:
-        for sub_name in random.sample(NSFW_SUBS, min(4, len(NSFW_SUBS))):
-            try:
-                sub = reddit.subreddit(sub_name)
-                for post in sub.search(query, sort="hot", limit=15):
-                    if not post.over_18:
-                        continue
-                    url = (post.url or "").lower()
-                    is_video = (
-                        post.is_video
-                        or "v.redd.it" in url
-                        or "redgifs.com" in url
-                        or url.endswith((".mp4", ".gifv"))
-                    )
-                    if is_video and post.url:
-                        results.append(post)
-            except Exception:
-                continue
+    # 1. Ưu tiên sub châu Á
+    for sub_name in random.sample(ASIAN_SUBS, min(5, len(ASIAN_SUBS))):
+        try:
+            sub = reddit.subreddit(sub_name)
+            for post in sub.search(search_query, sort="hot", limit=15):
+                if not post.over_18 or post.stickied:
+                    continue
+
+                url = (post.url or "").lower()
+                is_video = (
+                    post.is_video
+                    or "v.redd.it" in url
+                    or url.endswith((".mp4", ".gifv", ".webm"))
+                    or "redgifs.com" in url
+                    or "gfycat.com" in url
+                )
+
+                if is_video and post.url:
+                    results.append(post)
+        except Exception:
+            continue
+
+    # 2. Fallback search toàn site
+    if len(results) < 4:
+        try:
+            for post in reddit.subreddit("all").search(search_query, sort="hot", limit=25):
+                if not post.over_18 or post.stickied:
+                    continue
+
+                url = (post.url or "").lower()
+                is_video = (
+                    post.is_video
+                    or "v.redd.it" in url
+                    or "redgifs.com" in url
+                    or url.endswith((".mp4", ".gifv"))
+                )
+                if is_video and post.url:
+                    results.append(post)
+        except Exception as e:
+            print(f"[ALL VIDEO SEARCH ERROR] {e}")
 
     if not results:
         return None

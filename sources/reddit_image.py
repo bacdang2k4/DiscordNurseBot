@@ -22,11 +22,33 @@ if REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET and REDDIT_USER_AGENT:
 
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".gif")
 
-NSFW_SUBS = [
-    "nsfw", "RealGirls", "gonewild", "Amateur", "boobs", "ass",
-    "pussy", "nsfw_gif", "porn", "LegalTeens", "collegesluts",
-    "GodPussy", "OnOff", "curvy", "bigasses", "asiansgonewild",
-    "AsianNSFW", "JapanesePorn2", "AnalGW", "anal"
+# Subreddit châu Á (ưu tiên)
+ASIAN_SUBS = [
+    "asiansgonewild",
+    "AsianNSFW",
+    "JapanesePorn2",
+    "NSFW_Japan",
+    "AsianHotties",
+    "ChineseGoneWild",
+    "KoreanNSFW",
+    "ThaiGoneWild",
+    "VietnameseNSFW",
+    "bustyasians",
+    "AsiansGoneWild",
+    "AsianCumsluts",
+    "AsianBlowjob",
+    "AnalGW",           # vẫn để vì nhiều nội dung châu Á
+]
+
+# Từ khóa châu Á tự động thêm vào
+ASIAN_KEYWORDS = [
+    "asian",
+    "japanese",
+    "japanese girl",
+    "korean",
+    "chinese",
+    "thai",
+    "vietnamese",
 ]
 
 
@@ -36,45 +58,58 @@ def _search_image_sync(query: str):
 
     results = []
 
-    # 1. Search toàn site (NSFW)
-    try:
-        for post in reddit.subreddit("all").search(query, sort="hot", limit=40):
-            if not post.over_18:
-                continue
-            if post.stickied:
-                continue
+    # Tự động thêm từ khóa châu Á nếu người dùng không ghi
+    query_lower = query.lower()
+    has_asian_word = any(k in query_lower for k in ["asia", "asian", "japan", "korean", "chinese", "thai", "viet"])
 
-            url = (post.url or "").lower()
-            is_image = (
-                any(url.endswith(ext) for ext in IMAGE_EXTENSIONS)
-                or "i.redd.it" in url
-                or "i.imgur.com" in url
-                or getattr(post, "post_hint", "") == "image"
-            )
+    if not has_asian_word:
+        # Random 1 từ khóa châu Á để ghép vào
+        asian_kw = random.choice(ASIAN_KEYWORDS)
+        search_query = f"{asian_kw} {query}"
+    else:
+        search_query = query
 
-            if is_image and post.url:
-                results.append(post)
-    except Exception as e:
-        print(f"[PRAW SEARCH ERROR] {e}")
+    print(f"[SEARCH IMAGE] Gốc: {query} → Thực tế: {search_query}")
 
-    # 2. Nếu ít kết quả thì tìm thêm trong các sub NSFW
+    # 1. Ưu tiên search trong các sub châu Á
+    for sub_name in random.sample(ASIAN_SUBS, min(6, len(ASIAN_SUBS))):
+        try:
+            sub = reddit.subreddit(sub_name)
+            for post in sub.search(search_query, sort="hot", limit=20):
+                if not post.over_18 or post.stickied:
+                    continue
+
+                url = (post.url or "").lower()
+                is_image = (
+                    any(url.endswith(ext) for ext in IMAGE_EXTENSIONS)
+                    or "i.redd.it" in url
+                    or "i.imgur.com" in url
+                    or getattr(post, "post_hint", "") == "image"
+                )
+
+                if is_image and post.url:
+                    results.append(post)
+        except Exception as e:
+            print(f"[SUB {sub_name} ERROR] {e}")
+            continue
+
+    # 2. Nếu vẫn ít kết quả thì search toàn site với từ khóa đã thêm asian
     if len(results) < 5:
-        for sub_name in random.sample(NSFW_SUBS, min(5, len(NSFW_SUBS))):
-            try:
-                sub = reddit.subreddit(sub_name)
-                for post in sub.search(query, sort="hot", limit=15):
-                    if not post.over_18:
-                        continue
-                    url = (post.url or "").lower()
-                    is_image = (
-                        any(url.endswith(ext) for ext in IMAGE_EXTENSIONS)
-                        or "i.redd.it" in url
-                        or "i.imgur.com" in url
-                    )
-                    if is_image and post.url:
-                        results.append(post)
-            except Exception:
-                continue
+        try:
+            for post in reddit.subreddit("all").search(search_query, sort="hot", limit=30):
+                if not post.over_18 or post.stickied:
+                    continue
+
+                url = (post.url or "").lower()
+                is_image = (
+                    any(url.endswith(ext) for ext in IMAGE_EXTENSIONS)
+                    or "i.redd.it" in url
+                    or "i.imgur.com" in url
+                )
+                if is_image and post.url:
+                    results.append(post)
+        except Exception as e:
+            print(f"[ALL SEARCH ERROR] {e}")
 
     if not results:
         return None
