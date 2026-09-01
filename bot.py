@@ -8,7 +8,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 
 from sources.reddit_image import search_reddit_image
-from sources.reddit_video import search_reddit_video
+from sources.redgifs import search_redgifs
 from sources.neko import get_neko, get_supported_types
 from sources.purr import get_purr, get_purr_types
 from sources.rule34 import search_rule34
@@ -72,6 +72,12 @@ def is_nsfw(interaction: discord.Interaction) -> bool:
     return isinstance(ch, discord.TextChannel) and ch.is_nsfw()
 
 
+def log(interaction: discord.Interaction, **kwargs):
+    parts = [f"[/{interaction.command.name}]", f"user={interaction.user}"]
+    parts += [f"{k}={v}" for k, v in kwargs.items()]
+    print(" | ".join(parts))
+
+
 # ============================================================
 # EVENTS
 # ============================================================
@@ -121,6 +127,7 @@ async def purr_autocomplete(
 
 @bot.tree.command(name="help", description="Hiển thị danh sách lệnh của bot")
 async def help_command(interaction: discord.Interaction):
+    log(interaction)
     embed = discord.Embed(
         title="📖 NSFW Bot",
         description="**Chỉ dùng trong kênh NSFW**",
@@ -132,8 +139,8 @@ async def help_command(interaction: discord.Interaction):
         inline=False
     )
     embed.add_field(
-        name="🎬 `/video <từ khóa>`",
-        value="Tìm video NSFW (ưu tiên châu Á)\nVí dụ: `/video blowjob`",
+        name="🎞️ `/gif <từ khóa>`",
+        value="Tìm video/GIF NSFW từ RedGifs (play được trong Discord)\nVí dụ: `/gif asian blowjob`",
         inline=False
     )
     embed.add_field(
@@ -166,6 +173,7 @@ async def help_command(interaction: discord.Interaction):
 @bot.tree.command(name="image", description="Tìm ảnh NSFW từ Reddit (ưu tiên châu Á)")
 @app_commands.describe(query="Từ khóa tìm kiếm, ví dụ: anal, asian")
 async def image(interaction: discord.Interaction, query: str):
+    log(interaction, query=query)
     if not is_nsfw(interaction):
         return await interaction.response.send_message(
             "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
@@ -200,12 +208,13 @@ async def image(interaction: discord.Interaction, query: str):
 
 
 # ============================================================
-# /video <query>
+# /gif <query>
 # ============================================================
 
-@bot.tree.command(name="video", description="Tìm video NSFW từ Reddit (ưu tiên châu Á)")
-@app_commands.describe(query="Từ khóa tìm kiếm, ví dụ: blowjob, asian")
-async def video(interaction: discord.Interaction, query: str):
+@bot.tree.command(name="gif", description="Tìm video/GIF NSFW từ RedGifs (play được trong Discord)")
+@app_commands.describe(query="Từ khóa tìm kiếm, ví dụ: asian blowjob, teen")
+async def gif(interaction: discord.Interaction, query: str):
+    log(interaction, query=query)
     if not is_nsfw(interaction):
         return await interaction.response.send_message(
             "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
@@ -217,26 +226,30 @@ async def video(interaction: discord.Interaction, query: str):
     await interaction.response.defer()
 
     try:
-        result = await search_reddit_video(query)
+        result = await search_redgifs(query)
 
-        if not result or not is_valid_url(result.get("url")):
-            return await interaction.edit_original_response(content="❌ Không tìm thấy video.")
+        if not result:
+            return await interaction.edit_original_response(content="❌ Không tìm thấy kết quả. Thử từ khóa khác.")
+
+        tags = result["tags"]
+        tag_str = " ".join(f"#{t}" for t in tags[:20]) if tags else "—"
 
         embed = discord.Embed(
             title=result["title"][:200],
-            url=result.get("permalink"),
-            description=f"**Link:** {result['url']}",
-            color=discord.Color.purple()
+            url=result["url"],
+            description=tag_str,
+            color=discord.Color.dark_teal()
         )
-        embed.add_field(name="Subreddit", value=f"r/{result['subreddit']}", inline=True)
-        embed.add_field(name="Upvotes", value=str(result["score"]), inline=True)
-        embed.set_footer(text=f"{interaction.user.display_name} • {query}")
+        embed.add_field(name="⏱️ Thời lượng", value=f"{result['duration']}s", inline=True)
+        embed.add_field(name="👁️ Lượt xem", value=f"{result['views']:,}", inline=True)
+        embed.add_field(name="❤️ Likes", value=f"{result['likes']:,}", inline=True)
+        embed.set_footer(text=f"{interaction.user.display_name} • redgifs.com")
 
         await interaction.edit_original_response(embed=embed)
-        await interaction.followup.send(result["url"])  # gửi link để Discord preview
+        await interaction.followup.send(result["video_url"])
 
     except Exception as e:
-        print(f"[VIDEO] {e}")
+        print(f"[GIF] {e}")
         await interaction.edit_original_response(content="❌ Lỗi khi tìm video.")
 
 
@@ -248,6 +261,7 @@ async def video(interaction: discord.Interaction, query: str):
 @app_commands.describe(type="Loại ảnh, ví dụ: ass, pussy, random")
 @app_commands.autocomplete(type=neko_autocomplete)
 async def neko(interaction: discord.Interaction, type: str = "random"):
+    log(interaction, type=type)
     if not is_nsfw(interaction):
         return await interaction.response.send_message(
             "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
@@ -293,6 +307,7 @@ async def neko(interaction: discord.Interaction, type: str = "random"):
 @app_commands.describe(type="Loại ảnh, ví dụ: anal, blowjob, yuri")
 @app_commands.autocomplete(type=purr_autocomplete)
 async def purr(interaction: discord.Interaction, type: str = "neko"):
+    log(interaction, type=type)
     if not is_nsfw(interaction):
         return await interaction.response.send_message(
             "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
@@ -337,6 +352,7 @@ async def purr(interaction: discord.Interaction, type: str = "neko"):
 @bot.tree.command(name="r34", description="Tìm kiếm ảnh/video từ Rule34 theo tags")
 @app_commands.describe(tags="Tags tìm kiếm, cách nhau bằng dấu cách. Ví dụ: asian blowjob")
 async def r34(interaction: discord.Interaction, tags: str):
+    log(interaction, tags=tags)
     if not is_nsfw(interaction):
         return await interaction.response.send_message(
             "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
@@ -385,6 +401,7 @@ async def r34(interaction: discord.Interaction, tags: str):
 
 @bot.tree.command(name="ping", description="Kiểm tra độ trễ của bot")
 async def ping(interaction: discord.Interaction):
+    log(interaction)
     await interaction.response.send_message(f"🏓 Pong! `{round(bot.latency * 1000)} ms`")
 
 
