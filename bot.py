@@ -1,44 +1,52 @@
 import os
-import random
 
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-import praw
+
+from sources.images import search_image
+from sources.videos import search_video
+from sources.reddit import get_random_reddit_post
+
+from utils.cooldown import (
+    CooldownManager
+)
+
+from utils.media import (
+    is_valid_url
+)
 
 
-# =========================================================
-# 1. LOAD CONFIGURATION
-# =========================================================
+# ============================================================
+# CONFIG
+# ============================================================
 
 load_dotenv()
 
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
-REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
-REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT")
+TOKEN = os.getenv(
+    "DISCORD_TOKEN"
+)
 
 
-# Kiểm tra biến môi trường
-if not DISCORD_TOKEN:
-    raise RuntimeError("Missing DISCORD_TOKEN in .env")
+if not TOKEN:
 
-if not REDDIT_CLIENT_ID:
-    raise RuntimeError("Missing REDDIT_CLIENT_ID in .env")
-
-if not REDDIT_CLIENT_SECRET:
-    raise RuntimeError("Missing REDDIT_CLIENT_SECRET in .env")
-
-if not REDDIT_USER_AGENT:
-    raise RuntimeError("Missing REDDIT_USER_AGENT in .env")
+    raise RuntimeError(
+        "Không tìm thấy DISCORD_TOKEN trong .env"
+    )
 
 
-# =========================================================
-# 2. DISCORD CONFIGURATION
-# =========================================================
+# ============================================================
+# DISCORD INTENTS
+# ============================================================
 
 intents = discord.Intents.default()
+
 intents.message_content = True
+
+
+# ============================================================
+# BOT
+# ============================================================
 
 bot = commands.Bot(
     command_prefix=".",
@@ -47,236 +55,530 @@ bot = commands.Bot(
 )
 
 
-# =========================================================
-# 3. REDDIT CONFIGURATION
-# =========================================================
+# ============================================================
+# COOLDOWN
+# ============================================================
 
-reddit = praw.Reddit(
-    client_id=REDDIT_CLIENT_ID,
-    client_secret=REDDIT_CLIENT_SECRET,
-    user_agent=REDDIT_USER_AGENT,
-    check_for_async=False
+cooldown = CooldownManager(
+    cooldown_seconds=10
 )
 
 
-# Chỉ dùng các subreddit phù hợp với mục đích không-explicit
-SUBREDDITS = [
-    "EarthPorn",
-    "NatureIsFuckingLit",
-    "CityPorn",
-    "wallpapers"
-]
+# ============================================================
+# CHECK COOLDOWN
+# ============================================================
+
+async def check_cooldown(ctx):
+
+    allowed, remaining = cooldown.check(
+        ctx.author.id
+    )
+
+    if not allowed:
+
+        await ctx.send(
+            f"⏳ Bạn cần đợi "
+            f"**{remaining:.1f} giây** "
+            f"trước khi sử dụng lệnh tiếp."
+        )
+
+        return False
+
+    return True
 
 
-IMAGE_EXTENSIONS = (
-    ".jpg",
-    ".jpeg",
-    ".png",
-    ".webp"
-)
-
-
-# =========================================================
-# 4. BOT READY
-# =========================================================
+# ============================================================
+# BOT READY
+# ============================================================
 
 @bot.event
 async def on_ready():
-    print("=" * 50)
-    print(f"Bot online: {bot.user}")
-    print(f"Bot ID: {bot.user.id}")
-    print(f"Servers: {len(bot.guilds)}")
-    print("=" * 50)
+
+    print("=" * 60)
+
+    print(
+        f"Bot online: {bot.user}"
+    )
+
+    print(
+        f"Bot ID: {bot.user.id}"
+    )
+
+    print(
+        f"Servers: {len(bot.guilds)}"
+    )
+
+    print("=" * 60)
 
     await bot.change_presence(
         activity=discord.Game(
-            name=".random | Reddit"
+            name=".help | Media Bot"
         )
     )
 
 
-# =========================================================
-# 5. HELP COMMAND
-# =========================================================
+# ============================================================
+# PING
+# ============================================================
 
-@bot.command(name="help")
-async def help_command(ctx):
-
-    embed = discord.Embed(
-        title="🤖 Bot Commands",
-        description="Các lệnh hiện có:",
-        color=discord.Color.blue()
-    )
-
-    embed.add_field(
-        name=".random",
-        value="Lấy một bài Reddit ngẫu nhiên.",
-        inline=False
-    )
-
-    embed.add_field(
-        name=".ping",
-        value="Kiểm tra bot có hoạt động không.",
-        inline=False
-    )
-
-    await ctx.send(embed=embed)
-
-
-# =========================================================
-# 6. PING COMMAND
-# =========================================================
-
-@bot.command(name="ping")
+@bot.command()
 async def ping(ctx):
 
-    latency = round(bot.latency * 1000)
+    latency = round(
+        bot.latency * 1000
+    )
 
     await ctx.send(
         f"🏓 Pong! `{latency} ms`"
     )
 
 
-# =========================================================
-# 7. GET REDDIT POSTS
-# =========================================================
+# ============================================================
+# BOT INFO
+# ============================================================
 
-def get_random_reddit_post():
+@bot.command()
+async def botinfo(ctx):
 
-    # Chọn subreddit
-    subreddit_name = random.choice(SUBREDDITS)
-
-    subreddit = reddit.subreddit(subreddit_name)
-
-    # Lấy một lượng post giới hạn
-    posts = list(
-        subreddit.hot(limit=50)
+    embed = discord.Embed(
+        title="🤖 DiscordNurseBot",
+        description=(
+            "Bot tìm kiếm media "
+            "từ nhiều nguồn."
+        ),
+        color=discord.Color.blue()
     )
 
-    # Lọc bài có ảnh trực tiếp
-    image_posts = []
-
-    for post in posts:
-
-        if post.stickied:
-            continue
-
-        if not post.url:
-            continue
-
-        url = post.url.lower()
-
-        if url.endswith(IMAGE_EXTENSIONS):
-            image_posts.append(post)
-
-    if not image_posts:
-        return None
-
-    return random.choice(image_posts)
-
-
-# =========================================================
-# 8. RANDOM REDDIT COMMAND
-# =========================================================
-
-@bot.command(name="random")
-@commands.cooldown(
-    1,
-    10,
-    commands.BucketType.user
-)
-async def random_post(ctx):
-
-    # Thông báo đang xử lý
-    message = await ctx.send(
-        "🔍 Đang tìm bài Reddit..."
+    embed.add_field(
+        name="Servers",
+        value=str(
+            len(bot.guilds)
+        ),
+        inline=True
     )
+
+    embed.add_field(
+        name="Latency",
+        value=(
+            f"{round(bot.latency * 1000)} ms"
+        ),
+        inline=True
+    )
+
+    embed.add_field(
+        name="Prefix",
+        value=".",
+        inline=True
+    )
+
+    await ctx.send(
+        embed=embed
+    )
+
+
+# ============================================================
+# HELP
+# ============================================================
+
+@bot.command(name="help")
+async def help_command(ctx):
+
+    embed = discord.Embed(
+        title="📖 DiscordNurseBot",
+        description=(
+            "Các lệnh có sẵn:"
+        ),
+        color=discord.Color.blue()
+    )
+
+    embed.add_field(
+        name="🖼️ `.image <keyword>`",
+        value=(
+            "Tìm ảnh trên Pexels.\n"
+            "Ví dụ: `.image cat`"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🎬 `.video <keyword>`",
+        value=(
+            "Tìm video trên Pexels.\n"
+            "Ví dụ: `.video minecraft`"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🔴 `.reddit`",
+        value=(
+            "Lấy một bài media SFW "
+            "từ Reddit."
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🏓 `.ping`",
+        value=(
+            "Kiểm tra bot."
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="ℹ️ `.botinfo`",
+        value=(
+            "Thông tin bot."
+        ),
+        inline=False
+    )
+
+    await ctx.send(
+        embed=embed
+    )
+
+
+# ============================================================
+# IMAGE
+# ============================================================
+
+@bot.command()
+async def image(ctx, *, query: str = None):
+
+    if not query:
+
+        await ctx.send(
+            "❌ Ví dụ:\n"
+            "`.image cat`"
+        )
+
+        return
+
+
+    if not await check_cooldown(ctx):
+        return
+
+
+    processing = await ctx.send(
+        "🔍 Đang tìm ảnh..."
+    )
+
 
     try:
 
-        post = get_random_reddit_post()
+        result = await search_image(
+            query
+        )
 
-        if post is None:
+        if not result:
 
-            await message.edit(
-                content="❌ Không tìm thấy bài phù hợp."
+            await processing.edit(
+                content=(
+                    "❌ Không tìm thấy ảnh."
+                )
             )
 
             return
 
-        # Reddit permalink
-        reddit_url = (
-            f"https://www.reddit.com"
-            f"{post.permalink}"
-        )
+
+        url = result["url"]
+
+
+        if not is_valid_url(url):
+
+            await processing.edit(
+                content=(
+                    "❌ URL ảnh không hợp lệ."
+                )
+            )
+
+            return
+
 
         embed = discord.Embed(
-            title=post.title[:256]
-            if post.title
-            else "Reddit Post",
-            url=reddit_url,
-            color=discord.Color.blue()
+            title=(
+                f"🖼️ {result['title']}"
+            ),
+            color=discord.Color.green()
         )
 
+
         embed.set_image(
-            url=post.url
+            url=url
         )
+
+
+        embed.add_field(
+            name="Nguồn",
+            value="Pexels",
+            inline=True
+        )
+
+
+        embed.add_field(
+            name="Tác giả",
+            value=result.get(
+                "photographer",
+                "Unknown"
+            ),
+            inline=True
+        )
+
+
+        if result.get("page_url"):
+
+            embed.url = result[
+                "page_url"
+            ]
+
 
         embed.set_footer(
             text=(
-                f"r/{post.subreddit.display_name} "
-                f"| 👍 {post.score}"
+                f"Requested by "
+                f"{ctx.author.display_name}"
             )
         )
 
-        await message.delete()
+
+        await processing.delete()
 
         await ctx.send(
             embed=embed
         )
 
+
     except Exception as e:
 
         print(
-            f"[ERROR] Reddit request failed: {e}"
+            f"[IMAGE ERROR] {e}"
         )
 
-        await message.edit(
+        await processing.edit(
             content=(
-                "❌ Không thể lấy dữ liệu Reddit. "
-                "Vui lòng thử lại sau."
+                "❌ Có lỗi khi tìm ảnh."
             )
         )
 
 
-# =========================================================
-# 9. COOLDOWN ERROR
-# =========================================================
+# ============================================================
+# VIDEO
+# ============================================================
 
-@random_post.error
-async def random_post_error(
-    ctx,
-    error
-):
+@bot.command()
+async def video(ctx, *, query: str = None):
 
-    if isinstance(
-        error,
-        commands.CommandOnCooldown
-    ):
-
-        seconds = round(
-            error.retry_after
-        )
+    if not query:
 
         await ctx.send(
-            f"⏳ Bạn đang dùng lệnh quá nhanh. "
-            f"Thử lại sau `{seconds}` giây."
+            "❌ Ví dụ:\n"
+            "`.video minecraft`"
+        )
+
+        return
+
+
+    if not await check_cooldown(ctx):
+        return
+
+
+    processing = await ctx.send(
+        "🔍 Đang tìm video..."
+    )
+
+
+    try:
+
+        result = await search_video(
+            query
         )
 
 
-# =========================================================
-# 10. UNKNOWN COMMAND
-# =========================================================
+        if not result:
+
+            await processing.edit(
+                content=(
+                    "❌ Không tìm thấy video."
+                )
+            )
+
+            return
+
+
+        url = result["url"]
+
+
+        if not is_valid_url(url):
+
+            await processing.edit(
+                content=(
+                    "❌ URL video không hợp lệ."
+                )
+            )
+
+            return
+
+
+        embed = discord.Embed(
+            title=(
+                f"🎬 {result['title']}"
+            ),
+            description=(
+                f"⏱️ Thời lượng: "
+                f"{result.get('duration', '?')} giây"
+            ),
+            color=discord.Color.purple()
+        )
+
+
+        if result.get("page_url"):
+
+            embed.url = result[
+                "page_url"
+            ]
+
+
+        embed.add_field(
+            name="Video",
+            value=(
+                f"[▶️ Xem video]({url})"
+            ),
+            inline=False
+        )
+
+
+        embed.set_footer(
+            text=(
+                f"Requested by "
+                f"{ctx.author.display_name}"
+            )
+        )
+
+
+        await processing.delete()
+
+        await ctx.send(
+            embed=embed
+        )
+
+
+    except Exception as e:
+
+        print(
+            f"[VIDEO ERROR] {e}"
+        )
+
+        await processing.edit(
+            content=(
+                "❌ Có lỗi khi tìm video."
+            )
+        )
+
+
+# ============================================================
+# REDDIT
+# ============================================================
+
+@bot.command()
+async def reddit(ctx):
+
+    if not await check_cooldown(ctx):
+        return
+
+
+    processing = await ctx.send(
+        "🔍 Đang lấy media từ Reddit..."
+    )
+
+
+    try:
+
+        result = await get_random_reddit_post()
+
+
+        if not result:
+
+            await processing.edit(
+                content=(
+                    "❌ Không tìm thấy media Reddit."
+                )
+            )
+
+            return
+
+
+        url = result["url"]
+
+
+        if not is_valid_url(url):
+
+            await processing.edit(
+                content=(
+                    "❌ URL Reddit không hợp lệ."
+                )
+            )
+
+            return
+
+
+        embed = discord.Embed(
+            title=(
+                f"🔴 r/{result['subreddit']}"
+            ),
+            description=(
+                result["title"][:300]
+            ),
+            url=result["permalink"],
+            color=discord.Color.red()
+        )
+
+
+        embed.set_image(
+            url=url
+        )
+
+
+        embed.add_field(
+            name="Upvotes",
+            value=str(
+                result["score"]
+            ),
+            inline=True
+        )
+
+
+        embed.set_footer(
+            text=(
+                f"Requested by "
+                f"{ctx.author.display_name}"
+            )
+        )
+
+
+        await processing.delete()
+
+        await ctx.send(
+            embed=embed
+        )
+
+
+    except Exception as e:
+
+        print(
+            f"[REDDIT ERROR] {e}"
+        )
+
+        await processing.edit(
+            content=(
+                "❌ Không thể lấy dữ liệu Reddit.\n"
+                "Kiểm tra Reddit API credentials."
+            )
+        )
+
+
+# ============================================================
+# ERROR HANDLER
+# ============================================================
 
 @bot.event
 async def on_command_error(
@@ -290,21 +592,30 @@ async def on_command_error(
     ):
         return
 
+
     if isinstance(
         error,
-        commands.CommandOnCooldown
+        commands.MissingRequiredArgument
     ):
+
+        await ctx.send(
+            "❌ Thiếu thông tin cho lệnh."
+        )
+
         return
+
 
     print(
         f"[COMMAND ERROR] {error}"
     )
 
 
-# =========================================================
-# 11. START BOT
-# =========================================================
+# ============================================================
+# START
+# ============================================================
 
-print("Starting Discord bot...")
+print(
+    "Đang khởi động DiscordNurseBot..."
+)
 
-bot.run(DISCORD_TOKEN)
+bot.run(TOKEN)
