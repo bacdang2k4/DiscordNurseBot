@@ -3,6 +3,7 @@ import time
 from collections import defaultdict
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
@@ -29,10 +30,9 @@ if not TOKEN:
 # ============================================================
 
 intents = discord.Intents.default()
-intents.message_content = True
 
 bot = commands.Bot(
-    command_prefix=".",
+    command_prefix="!",
     intents=intents,
     help_command=None
 )
@@ -46,16 +46,18 @@ user_cooldowns = defaultdict(float)
 COOLDOWN_SECONDS = 8
 
 
-async def check_cooldown(ctx):
+async def check_cooldown(interaction: discord.Interaction) -> bool:
     now = time.time()
-    last = user_cooldowns[ctx.author.id]
+    last = user_cooldowns[interaction.user.id]
 
     if now - last < COOLDOWN_SECONDS:
         remaining = COOLDOWN_SECONDS - (now - last)
-        await ctx.send(f"⏳ Bạn cần đợi **{remaining:.1f} giây**.")
+        await interaction.response.send_message(
+            f"⏳ Bạn cần đợi **{remaining:.1f} giây**.", ephemeral=True
+        )
         return False
 
-    user_cooldowns[ctx.author.id] = now
+    user_cooldowns[interaction.user.id] = now
     return True
 
 
@@ -73,80 +75,100 @@ async def on_ready():
     print(f"Bot online: {bot.user}")
     print(f"Servers: {len(bot.guilds)}")
     print("=" * 50)
-    await bot.change_presence(activity=discord.Game(name=".image | .video | NSFW"))
-
-
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandNotFound):
-        return
-    if isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send("❌ Thiếu từ khóa.\nVí dụ: `.image asia anal`")
-        return
-    print(f"[ERROR] {error}")
+    await bot.change_presence(activity=discord.Game(name="/image | /video | NSFW"))
+    try:
+        synced = await bot.tree.sync()
+        print(f"Đã sync {len(synced)} slash command(s)")
+    except Exception as e:
+        print(f"[SYNC ERROR] {e}")
 
 
 # ============================================================
-# HELP
+# AUTOCOMPLETE
 # ============================================================
 
-@bot.command(name="help")
-async def help_command(ctx):
+async def neko_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    types = ["random"] + get_supported_types()
+    return [
+        app_commands.Choice(name=t, value=t)
+        for t in types if current.lower() in t.lower()
+    ][:25]
+
+
+async def purr_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    return [
+        app_commands.Choice(name=t, value=t)
+        for t in get_purr_types() if current.lower() in t.lower()
+    ][:25]
+
+
+# ============================================================
+# /help
+# ============================================================
+
+@bot.tree.command(name="help", description="Hiển thị danh sách lệnh của bot")
+async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(
         title="📖 NSFW Bot",
         description="**Chỉ dùng trong kênh NSFW**",
         color=discord.Color.dark_red()
     )
     embed.add_field(
-        name="🖼️ `.image <từ khóa>`",
-        value="Tìm ảnh NSFW (ưu tiên châu Á)\nVí dụ: `.image anal`",
+        name="🖼️ `/image <từ khóa>`",
+        value="Tìm ảnh NSFW (ưu tiên châu Á)\nVí dụ: `/image anal`",
         inline=False
     )
     embed.add_field(
-        name="🎬 `.video <từ khóa>`",
-        value="Tìm video NSFW (ưu tiên châu Á)\nVí dụ: `.video blowjob`",
+        name="🎬 `/video <từ khóa>`",
+        value="Tìm video NSFW (ưu tiên châu Á)\nVí dụ: `/video blowjob`",
         inline=False
     )
     embed.add_field(
-        name="🌸 `.neko <type>`",
-        value="Ảnh từ NekoBot\nVí dụ: `.neko ass` | `.neko random`",
+        name="🌸 `/neko <type>`",
+        value="Ảnh từ NekoBot\nVí dụ: `/neko ass` | `/neko random`",
         inline=False
     )
     embed.add_field(
-        name="🐱 `.purr <type>`",
-        value="Ảnh/GIF từ PurrBot\nVí dụ: `.purr anal` | `.purr yuri`",
+        name="🐱 `/purr <type>`",
+        value="Ảnh/GIF từ PurrBot\nVí dụ: `/purr anal` | `/purr yuri`",
         inline=False
     )
     embed.add_field(
-        name="🏓 `.ping`",
+        name="🏓 `/ping`",
         value="Kiểm tra bot",
         inline=False
     )
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
 
 # ============================================================
-# .image <query>
+# /image <query>
 # ============================================================
 
-@bot.command(name="image")
-async def image(ctx, *, query: str = None):
-    if not ctx.channel.is_nsfw():
-        return await ctx.send("❌ Chỉ dùng trong kênh **NSFW**!")
+@bot.tree.command(name="image", description="Tìm ảnh NSFW từ Reddit (ưu tiên châu Á)")
+@app_commands.describe(query="Từ khóa tìm kiếm, ví dụ: anal, asian")
+async def image(interaction: discord.Interaction, query: str):
+    if not interaction.channel.is_nsfw():
+        return await interaction.response.send_message(
+            "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
+        )
 
-    if not query:
-        return await ctx.send("❌ Ví dụ: `.image asia anal`")
-
-    if not await check_cooldown(ctx):
+    if not await check_cooldown(interaction):
         return
 
-    msg = await ctx.send(f"🔍 Đang tìm ảnh: **{query}**...")
+    await interaction.response.defer()
 
     try:
         result = await search_reddit_image(query)
 
         if not result or not is_valid_url(result.get("url")):
-            return await msg.edit(content="❌ Không tìm thấy ảnh.")
+            return await interaction.edit_original_response(content="❌ Không tìm thấy ảnh.")
 
         embed = discord.Embed(
             title=result["title"][:200],
@@ -156,38 +178,37 @@ async def image(ctx, *, query: str = None):
         embed.set_image(url=result["url"])
         embed.add_field(name="Subreddit", value=f"r/{result['subreddit']}", inline=True)
         embed.add_field(name="Upvotes", value=str(result["score"]), inline=True)
-        embed.set_footer(text=f"{ctx.author.display_name} • {query}")
+        embed.set_footer(text=f"{interaction.user.display_name} • {query}")
 
-        await msg.delete()
-        await ctx.send(embed=embed)
+        await interaction.edit_original_response(embed=embed)
 
     except Exception as e:
         print(f"[IMAGE] {e}")
-        await msg.edit(content="❌ Lỗi khi tìm ảnh.")
+        await interaction.edit_original_response(content="❌ Lỗi khi tìm ảnh.")
 
 
 # ============================================================
-# .video <query>
+# /video <query>
 # ============================================================
 
-@bot.command(name="video")
-async def video(ctx, *, query: str = None):
-    if not ctx.channel.is_nsfw():
-        return await ctx.send("❌ Chỉ dùng trong kênh **NSFW**!")
+@bot.tree.command(name="video", description="Tìm video NSFW từ Reddit (ưu tiên châu Á)")
+@app_commands.describe(query="Từ khóa tìm kiếm, ví dụ: blowjob, asian")
+async def video(interaction: discord.Interaction, query: str):
+    if not interaction.channel.is_nsfw():
+        return await interaction.response.send_message(
+            "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
+        )
 
-    if not query:
-        return await ctx.send("❌ Ví dụ: `.video asia anal`")
-
-    if not await check_cooldown(ctx):
+    if not await check_cooldown(interaction):
         return
 
-    msg = await ctx.send(f"🔍 Đang tìm video: **{query}**...")
+    await interaction.response.defer()
 
     try:
         result = await search_reddit_video(query)
 
         if not result or not is_valid_url(result.get("url")):
-            return await msg.edit(content="❌ Không tìm thấy video.")
+            return await interaction.edit_original_response(content="❌ Không tìm thấy video.")
 
         embed = discord.Embed(
             title=result["title"][:200],
@@ -197,113 +218,113 @@ async def video(ctx, *, query: str = None):
         )
         embed.add_field(name="Subreddit", value=f"r/{result['subreddit']}", inline=True)
         embed.add_field(name="Upvotes", value=str(result["score"]), inline=True)
-        embed.set_footer(text=f"{ctx.author.display_name} • {query}")
+        embed.set_footer(text=f"{interaction.user.display_name} • {query}")
 
-        await msg.delete()
-        await ctx.send(embed=embed)
-        await ctx.send(result["url"])   # gửi link để Discord preview
+        await interaction.edit_original_response(embed=embed)
+        await interaction.followup.send(result["url"])  # gửi link để Discord preview
 
     except Exception as e:
         print(f"[VIDEO] {e}")
-        await msg.edit(content="❌ Lỗi khi tìm video.")
+        await interaction.edit_original_response(content="❌ Lỗi khi tìm video.")
 
 
 # ============================================================
-# .neko <type>
+# /neko <type>
 # ============================================================
 
-@bot.command(name="neko")
-async def neko(ctx, type_: str = "random"):
-    if not ctx.channel.is_nsfw():
-        return await ctx.send("❌ Chỉ dùng trong kênh **NSFW**!")
-
-    if not await check_cooldown(ctx):
-        return
-
-    type_ = type_.lower().strip()
-
-    # Hiện danh sách nếu gõ sai
-    supported = get_supported_types()
-    if type_ not in ["random"] + supported:
-        return await ctx.send(
-            f"❌ Type không hợp lệ.\n"
-            f"Các type hỗ trợ: `{'`, `'.join(supported)}`, `random`\n"
-            f"Ví dụ: `.neko ass` | `.neko pussy` | `.neko random`"
+@bot.tree.command(name="neko", description="Lấy ảnh NSFW từ NekoBot")
+@app_commands.describe(type="Loại ảnh, ví dụ: ass, pussy, random")
+@app_commands.autocomplete(type=neko_autocomplete)
+async def neko(interaction: discord.Interaction, type: str = "random"):
+    if not interaction.channel.is_nsfw():
+        return await interaction.response.send_message(
+            "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
         )
 
-    msg = await ctx.send(f"🔍 Đang lấy **{type_}** từ NekoBot...")
+    if not await check_cooldown(interaction):
+        return
+
+    type_ = type.lower().strip()
+    supported = get_supported_types()
+
+    if type_ not in ["random"] + supported:
+        return await interaction.response.send_message(
+            f"❌ Type không hợp lệ.\n"
+            f"Các type hỗ trợ: `{'`, `'.join(supported)}`, `random`",
+            ephemeral=True
+        )
+
+    await interaction.response.defer()
 
     try:
         result = await get_neko(type_)
 
         if not result or not is_valid_url(result.get("url")):
-            return await msg.edit(content="❌ Không lấy được ảnh.")
+            return await interaction.edit_original_response(content="❌ Không lấy được ảnh.")
 
-        embed = discord.Embed(
-            title=result["title"],
-            color=discord.Color.dark_magenta()
-        )
+        embed = discord.Embed(title=result["title"], color=discord.Color.dark_magenta())
         embed.set_image(url=result["url"])
-        embed.set_footer(text=f"NekoBot • {ctx.author.display_name}")
+        embed.set_footer(text=f"NekoBot • {interaction.user.display_name}")
 
-        await msg.delete()
-        await ctx.send(embed=embed)
+        await interaction.edit_original_response(embed=embed)
 
     except Exception as e:
         print(f"[NEKO CMD ERROR] {e}")
-        await msg.edit(content="❌ Có lỗi xảy ra.")
+        await interaction.edit_original_response(content="❌ Có lỗi xảy ra.")
+
 
 # ============================================================
-# .purr <type>
+# /purr <type>
 # ============================================================
 
-@bot.command(name="purr")
-async def purr(ctx, type_: str = "neko"):
-    if not ctx.channel.is_nsfw():
-        return await ctx.send("❌ Chỉ dùng trong kênh **NSFW**!")
+@bot.tree.command(name="purr", description="Lấy ảnh/GIF NSFW từ PurrBot")
+@app_commands.describe(type="Loại ảnh, ví dụ: anal, blowjob, yuri")
+@app_commands.autocomplete(type=purr_autocomplete)
+async def purr(interaction: discord.Interaction, type: str = "neko"):
+    if not interaction.channel.is_nsfw():
+        return await interaction.response.send_message(
+            "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
+        )
 
-    if not await check_cooldown(ctx):
+    if not await check_cooldown(interaction):
         return
 
-    type_ = type_.lower().strip()
+    type_ = type.lower().strip()
     supported = get_purr_types()
 
     if type_ not in supported:
-        return await ctx.send(
+        return await interaction.response.send_message(
             f"❌ Type không hợp lệ.\n"
-            f"Các type hỗ trợ: `{'`, `'.join(supported)}`\n"
-            f"Ví dụ: `.purr anal` | `.purr blowjob` | `.purr yuri`"
+            f"Các type hỗ trợ: `{'`, `'.join(supported)}`",
+            ephemeral=True
         )
 
-    msg = await ctx.send(f"🔍 Đang lấy **{type_}** từ PurrBot...")
+    await interaction.response.defer()
 
     try:
         result = await get_purr(type_)
 
         if not result or not is_valid_url(result.get("url")):
-            return await msg.edit(content="❌ Không lấy được ảnh.")
+            return await interaction.edit_original_response(content="❌ Không lấy được ảnh.")
 
-        embed = discord.Embed(
-            title=result["title"],
-            color=discord.Color.orange()
-        )
+        embed = discord.Embed(title=result["title"], color=discord.Color.orange())
         embed.set_image(url=result["url"])
-        embed.set_footer(text=f"PurrBot • {ctx.author.display_name}")
+        embed.set_footer(text=f"PurrBot • {interaction.user.display_name}")
 
-        await msg.delete()
-        await ctx.send(embed=embed)
+        await interaction.edit_original_response(embed=embed)
 
     except Exception as e:
         print(f"[PURR CMD ERROR] {e}")
-        await msg.edit(content="❌ Có lỗi xảy ra.")
+        await interaction.edit_original_response(content="❌ Có lỗi xảy ra.")
+
 
 # ============================================================
-# .ping
+# /ping
 # ============================================================
 
-@bot.command()
-async def ping(ctx):
-    await ctx.send(f"🏓 Pong! `{round(bot.latency * 1000)} ms`")
+@bot.tree.command(name="ping", description="Kiểm tra độ trễ của bot")
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message(f"🏓 Pong! `{round(bot.latency * 1000)} ms`")
 
 
 # ============================================================
