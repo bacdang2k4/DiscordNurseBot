@@ -9,7 +9,56 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 }
 
-GAY_TAGS = {"gay", "male_only", "yaoi", "bara", "men_only", "gay_sex", "gay_male", "femboy", "gay_male_only", "gay_male_sex", "trans", "transgender", "trans_male", "trans_female", "transsexual", "trans_male_only", "trans_female_only",}
+_GAY = {
+    "gay", "gays", "gay sex", "gay porn", "gay male", "gay men", "gay man",
+    "gay couple", "gay couples", "gay twink", "gay anal", "gay blowjob",
+    "gay bareback", "gay creampie", "gay cum", "gay oral", "gay handjob",
+    "gay solo", "gay amateur", "gay homemade", "gay interracial",
+    "homosexual", "homosexuality", "yaoi", "bara", "bara gay",
+    "mm", "m/m", "men loving men", "man on man", "male on male",
+    "male male", "two guys", "two men", "guys only",
+    "male only", "males only", "men only", "man only", "only men", "only male",
+    "male only sex", "gay male only", "gay male sex",
+}
+_GAY_SCENE = {
+    "twink", "twinks", "twink gay", "otter", "otters",
+    "cub", "cubs", "chub", "chubby gay", "chaser",
+    "jock gay", "leather gay", "leather daddy",
+    "pup", "puppy play", "human pup", "gay pup",
+    "frotting", "frottage", "docking", "buddies",
+    "brojob", "str8 bait", "straight bait",
+    "muscle gay", "hunk gay", "dilf gay",
+}
+_FEMBOY = {
+    "femboy", "femboys", "fem boy", "femboi", "femboy porn",
+    "sissy", "sissies", "sissy slut", "sissy hypno", "sissification",
+    "crossdress", "crossdressing", "crossdresser", "cross dresser",
+    "cd", "tv cd", "trap", "traps", "trappy",
+    "boypussy", "boy pussy", "bussy", "boy clit",
+    "shemale femboy", "femboy anal", "femboy cum",
+}
+_TRANS = {
+    "trans", "transgender", "transsexual", "transexual",
+    "trans woman", "trans women", "transwoman", "transwomen",
+    "trans man", "trans men", "transman", "transmen",
+    "trans girl", "trans girls", "transgirl", "transgirls",
+    "trans boy", "transboy", "trans female", "trans male",
+    "trans female only", "trans male only",
+    "tgirl", "t girl", "t-girl", "t girls",
+    "mtf", "m2f", "ftm", "f2m",
+    "shemale", "shemales", "ladyboy", "ladyboys", "lady boy",
+    "newhalf", "girlcock", "girl cock", "girldick", "girl dick",
+    "trans cock", "trans dick", "big clit trans",
+    "nonbinary", "non binary", "enby", "nb trans",
+}
+_SOLO_MALE = {
+    "solo male", "male solo", "solo man", "solo men",
+    "male masturbation", "man masturbation",
+    "cock solo", "dick solo",
+}
+_HENTAI_GAY = {"yaoi", "bara", "gay hentai", "bara hentai"}
+
+BLOCKED_TAGS = _GAY | _GAY_SCENE | _FEMBOY | _TRANS | _SOLO_MALE | _HENTAI_GAY
 
 _recent_ids: deque = deque(maxlen=50)
 
@@ -27,7 +76,7 @@ async def _get_token() -> str | None:
 
 def _is_clean(gif: dict) -> bool:
     tags = {t.lower() for t in (gif.get("tags") or [])}
-    return not tags.intersection(GAY_TAGS)
+    return not tags.intersection(BLOCKED_TAGS)
 
 
 async def search_redgifs(query: str, count: int = 20):
