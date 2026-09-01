@@ -9,7 +9,7 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 }
 
-GAY_TAGS = {"gay", "male_only", "yaoi", "bara", "men_only", "gay_sex", "gay_male", "femboy", "gay_male_only", "gay_male_sex"}
+GAY_TAGS = {"gay", "male_only", "yaoi", "bara", "men_only", "gay_sex", "gay_male", "femboy", "gay_male_only", "gay_male_sex", "trans", "transgender", "trans_male", "trans_female", "transsexual", "trans_male_only", "trans_female_only",}
 
 _recent_ids: deque = deque(maxlen=50)
 
