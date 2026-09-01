@@ -1,60 +1,94 @@
+import asyncio
+import os
 import random
-import aiohttp
-from urllib.parse import quote_plus
+import praw
+from dotenv import load_dotenv
+
+load_dotenv()
+
+REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
+REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
+REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT")
+
+reddit = None
+
+if REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET and REDDIT_USER_AGENT:
+    reddit = praw.Reddit(
+        client_id=REDDIT_CLIENT_ID,
+        client_secret=REDDIT_CLIENT_SECRET,
+        user_agent=REDDIT_USER_AGENT,
+    )
 
 
-async def search_reddit_video(query: str, limit: int = 40):
-    """
-    Tìm video NSFW trên Reddit theo từ khóa.
-    """
-    q = quote_plus(query)
-    url = f"https://www.reddit.com/search.json?q={q}&type=link&sort=hot&limit={limit}&include_over_18=on"
+NSFW_SUBS = [
+    "nsfw", "nsfw_gif", "porn", "AnalGW", "anal",
+    "asiansgonewild", "AsianNSFW", "JapanesePorn2",
+    "gonewild", "RealGirls"
+]
 
-    headers = {"User-Agent": "DiscordNSFWBot/1.0"}
 
+def _search_video_sync(query: str):
+    if reddit is None:
+        raise RuntimeError("Reddit API chưa được cấu hình. Kiểm tra .env")
+
+    results = []
+
+    # 1. Search toàn site
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=15) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json()
-
-        posts = data.get("data", {}).get("children", [])
-        results = []
-
-        for item in posts:
-            post = item.get("data", {})
-
-            if not post.get("over_18", False):
+        for post in reddit.subreddit("all").search(query, sort="hot", limit=40):
+            if not post.over_18:
+                continue
+            if post.stickied:
                 continue
 
-            post_url = (post.get("url") or "").lower()
-
+            url = (post.url or "").lower()
             is_video = (
-                post.get("is_video", False)
-                or "v.redd.it" in post_url
-                or post_url.endswith((".mp4", ".gifv", ".webm"))
-                or "redgifs.com" in post_url
-                or "gfycat.com" in post_url
+                post.is_video
+                or "v.redd.it" in url
+                or url.endswith((".mp4", ".gifv", ".webm"))
+                or "redgifs.com" in url
+                or "gfycat.com" in url
             )
 
-            if is_video and post.get("url"):
+            if is_video and post.url:
                 results.append(post)
-
-        if not results:
-            return None
-
-        post = random.choice(results)
-
-        return {
-            "source": "reddit",
-            "subreddit": post.get("subreddit", "unknown"),
-            "title": post.get("title", "No title"),
-            "url": post.get("url"),
-            "permalink": f"https://www.reddit.com{post.get('permalink', '')}",
-            "score": post.get("score", 0),
-        }
-
     except Exception as e:
-        print(f"[REDDIT VIDEO ERROR] {e}")
+        print(f"[PRAW VIDEO SEARCH ERROR] {e}")
+
+    # 2. Tìm thêm trong sub NSFW nếu ít kết quả
+    if len(results) < 5:
+        for sub_name in random.sample(NSFW_SUBS, min(4, len(NSFW_SUBS))):
+            try:
+                sub = reddit.subreddit(sub_name)
+                for post in sub.search(query, sort="hot", limit=15):
+                    if not post.over_18:
+                        continue
+                    url = (post.url or "").lower()
+                    is_video = (
+                        post.is_video
+                        or "v.redd.it" in url
+                        or "redgifs.com" in url
+                        or url.endswith((".mp4", ".gifv"))
+                    )
+                    if is_video and post.url:
+                        results.append(post)
+            except Exception:
+                continue
+
+    if not results:
         return None
+
+    post = random.choice(results)
+
+    return {
+        "source": "reddit",
+        "subreddit": str(post.subreddit),
+        "title": post.title,
+        "url": post.url,
+        "permalink": f"https://www.reddit.com{post.permalink}",
+        "score": post.score,
+    }
+
+
+async def search_reddit_video(query: str):
+    return await asyncio.to_thread(_search_video_sync, query)
