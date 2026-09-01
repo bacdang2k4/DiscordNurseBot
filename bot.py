@@ -212,9 +212,14 @@ async def image(interaction: discord.Interaction, query: str):
 # ============================================================
 
 @bot.tree.command(name="gif", description="Tìm video/GIF NSFW từ RedGifs (play được trong Discord)")
-@app_commands.describe(query="Từ khóa tìm kiếm, ví dụ: asian blowjob, teen")
-async def gif(interaction: discord.Interaction, query: str):
-    log(interaction, query=query)
+@app_commands.describe(
+    query="Tag thứ 1 (bắt buộc)",
+    query2="Tag thứ 2 (tuỳ chọn)",
+    query3="Tag thứ 3 (tuỳ chọn)",
+)
+async def gif(interaction: discord.Interaction, query: str, query2: str = None, query3: str = None):
+    full_query = " ".join(q for q in [query, query2, query3] if q)
+    log(interaction, query=full_query)
     if not is_nsfw(interaction):
         return await interaction.response.send_message(
             "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
@@ -226,7 +231,7 @@ async def gif(interaction: discord.Interaction, query: str):
     await interaction.response.defer()
 
     try:
-        result = await search_redgifs(query)
+        result = await search_redgifs(full_query)
 
         if not result:
             return await interaction.edit_original_response(content="❌ Không tìm thấy kết quả. Thử từ khóa khác.")
