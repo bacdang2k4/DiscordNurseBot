@@ -175,15 +175,17 @@ async def help_command(interaction: discord.Interaction):
 async def gif(interaction: discord.Interaction, query: str):
     full_query = query.strip()
     log(interaction, query=full_query)
-    if not is_nsfw(interaction):
-        return await interaction.response.send_message(
-            "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
-        )
-
-    if not await check_cooldown(interaction):
-        return
-
     await interaction.response.defer()
+
+    if not is_nsfw(interaction):
+        return await interaction.edit_original_response(content="❌ Chỉ dùng trong kênh **NSFW**!")
+
+    now = time.time()
+    last = user_cooldowns[interaction.user.id]
+    if now - last < COOLDOWN_SECONDS:
+        remaining = COOLDOWN_SECONDS - (now - last)
+        return await interaction.edit_original_response(content=f"⏳ Bạn cần đợi **{remaining:.1f} giây**.")
+    user_cooldowns[interaction.user.id] = now
 
     try:
         results = await search_redgifs(full_query)
@@ -315,15 +317,17 @@ async def purr(interaction: discord.Interaction, type: str = "neko"):
 @app_commands.describe(tags="Tags tìm kiếm, cách nhau bằng dấu cách. Ví dụ: asian blowjob")
 async def r34(interaction: discord.Interaction, tags: str):
     log(interaction, tags=tags)
-    if not is_nsfw(interaction):
-        return await interaction.response.send_message(
-            "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
-        )
-
-    if not await check_cooldown(interaction):
-        return
-
     await interaction.response.defer()
+
+    if not is_nsfw(interaction):
+        return await interaction.edit_original_response(content="❌ Chỉ dùng trong kênh **NSFW**!")
+
+    now = time.time()
+    last = user_cooldowns[interaction.user.id]
+    if now - last < COOLDOWN_SECONDS:
+        remaining = COOLDOWN_SECONDS - (now - last)
+        return await interaction.edit_original_response(content=f"⏳ Bạn cần đợi **{remaining:.1f} giây**.")
+    user_cooldowns[interaction.user.id] = now
 
     try:
         result = await search_rule34(tags)
@@ -366,15 +370,17 @@ async def r34(interaction: discord.Interaction, tags: str):
 async def gel(interaction: discord.Interaction, tags: str):
     full_tags = tags.strip()
     log(interaction, tags=full_tags)
-    if not is_nsfw(interaction):
-        return await interaction.response.send_message(
-            "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
-        )
-
-    if not await check_cooldown(interaction):
-        return
-
     await interaction.response.defer()
+
+    if not is_nsfw(interaction):
+        return await interaction.edit_original_response(content="❌ Chỉ dùng trong kênh **NSFW**!")
+
+    now = time.time()
+    last = user_cooldowns[interaction.user.id]
+    if now - last < COOLDOWN_SECONDS:
+        remaining = COOLDOWN_SECONDS - (now - last)
+        return await interaction.edit_original_response(content=f"⏳ Bạn cần đợi **{remaining:.1f} giây**.")
+    user_cooldowns[interaction.user.id] = now
 
     try:
         result = await search_gelbooru(full_tags)
