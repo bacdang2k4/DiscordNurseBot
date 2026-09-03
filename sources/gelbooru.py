@@ -9,7 +9,6 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 }
 
-
 EXCLUDED_TAGS = {
     # Gay
     "yaoi", "bara", "gay", "male_only", "multiple_boys",
@@ -22,67 +21,57 @@ EXCLUDED_TAGS = {
 }
 
 
-def _build_tags(user_tags: str) -> str:
-    tags = [t.strip().replace(" ", "_") for t in user_tags.split(",") if t.strip()]
-    return " ".join(tags) + " rating:explicit"
-
-
 def _is_clean(post: dict) -> bool:
     tags = set(post.get("tags", "").split())
     return not tags.intersection(EXCLUDED_TAGS)
 
 
-async def _get_count(tags: str) -> int:
+def is_valid_url(url: str) -> bool:
+    return isinstance(url, str) and url.startswith(("http://", "https://"))
+
+
+async def search_gelbooru(user_tags: str, limit: int = 100):
+    pid = random.randint(0, 10)
+
     params = {
-        "page": "dapi", "s": "post", "q": "index",
-        "json": 1, "limit": 1, "tags": tags,
+        "page": "dapi",
+        "s": "post",
+        "q": "index",
+        "json": 1,
+        "limit": limit,
+        "pid": pid,
+        "tags": user_tags.strip(),
         "user_id": os.getenv("GELBOORU_USER_ID", ""),
         "api_key": os.getenv("GELBOORU_API_KEY", ""),
     }
+
+    print(f"[GELBOORU] Sending request: tags={user_tags!r} pid={pid}")
+    print(f"[GELBOORU] user_id={os.getenv('GELBOORU_USER_ID', 'MISSING')} api_key_set={bool(os.getenv('GELBOORU_API_KEY'))}")
+
     try:
         async with aiohttp.ClientSession(headers=HEADERS) as session:
-            async with session.get(GELBOORU_API, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                if resp.status != 200:
-                    return 0
+            async with session.get(
+                GELBOORU_API,
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as resp:
                 text = await resp.text()
-                data = json.loads(text)
-                return data.get("@attributes", {}).get("count", 0)
-    except Exception:
-        return 0
+                print(f"[GELBOORU] status={resp.status} body={text[:300]}")
 
-
-async def search_gelbooru(user_tags: str, limit: int = 50):
-    tags = _build_tags(user_tags)
-
-    total = await _get_count(tags)
-    if total == 0:
-        return None
-
-    max_pid = max(0, min((total - limit) // limit, 200))
-    pid = random.randint(0, max_pid)
-
-    params = {
-        "page": "dapi", "s": "post", "q": "index",
-        "json": 1, "limit": limit, "pid": pid,
-        "tags": tags,
-        "user_id": os.getenv("GELBOORU_USER_ID", ""),
-        "api_key": os.getenv("GELBOORU_API_KEY", ""),
-    }
-
-    try:
-        async with aiohttp.ClientSession(headers=HEADERS) as session:
-            async with session.get(GELBOORU_API, params=params, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                print(f"[GELBOORU] status={resp.status} pid={pid} tags={user_tags!r}")
                 if resp.status != 200:
                     return None
-                text = await resp.text()
+
                 data = json.loads(text)
 
         posts = data.get("post", [])
+        print(f"[GELBOORU] total posts={len(posts)}")
+
         if not posts:
             return None
 
         clean = [p for p in posts if _is_clean(p) and is_valid_url(p.get("file_url", ""))]
+        print(f"[GELBOORU] clean posts={len(clean)}")
+
         if not clean:
             return None
 
@@ -101,7 +90,3 @@ async def search_gelbooru(user_tags: str, limit: int = 50):
     except Exception as e:
         print(f"[GELBOORU ERROR] {type(e).__name__}: {e}")
         return None
-
-
-def is_valid_url(url: str) -> bool:
-    return isinstance(url, str) and url.startswith(("http://", "https://"))

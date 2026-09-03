@@ -171,11 +171,14 @@ async def help_command(interaction: discord.Interaction):
 # ============================================================
 
 @bot.tree.command(name="gif", description="Tìm video/GIF NSFW từ RedGifs (play được trong Discord)")
-@app_commands.describe(query="Tags cách nhau bằng dấu phẩy. Ví dụ: asian, blowjob, pov")
+@app_commands.describe(query="Tags cách nhau bằng dấu cách. Ví dụ: asian blowjob pov")
 async def gif(interaction: discord.Interaction, query: str):
     full_query = query.strip()
     log(interaction, query=full_query)
-    await interaction.response.defer()
+    try:
+        await interaction.response.defer()
+    except Exception:
+        return
 
     if not is_nsfw(interaction):
         return await interaction.edit_original_response(content="❌ Chỉ dùng trong kênh **NSFW**!")
@@ -366,11 +369,14 @@ async def r34(interaction: discord.Interaction, tags: str):
 # ============================================================
 
 @bot.tree.command(name="gel", description="Tìm ảnh/video NSFW từ Gelbooru")
-@app_commands.describe(tags="Tags cách nhau bằng dấu phẩy. Ví dụ: asian, anal, cum in mouth")
+@app_commands.describe(tags="Tags cách nhau bằng dấu cách. Ví dụ: asian anal cum_in_mouth")
 async def gel(interaction: discord.Interaction, tags: str):
     full_tags = tags.strip()
     log(interaction, tags=full_tags)
-    await interaction.response.defer()
+    try:
+        await interaction.response.defer()
+    except Exception:
+        return
 
     if not is_nsfw(interaction):
         return await interaction.edit_original_response(content="❌ Chỉ dùng trong kênh **NSFW**!")

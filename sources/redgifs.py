@@ -99,8 +99,7 @@ async def search_redgifs(query: str):
     if not token:
         return None
 
-    # Tách theo dấu phẩy, chuyển spaces trong mỗi tag thành underscore rồi Capitalize
-    tags_str = ",".join(t.strip().replace(" ", "_").capitalize() for t in query.split(",") if t.strip())
+    tags_str = ",".join(w.capitalize() for w in query.strip().split())
     order = random.choice(ORDERS)
     auth_headers = {**HEADERS, "Authorization": f"Bearer {token}"}
 
