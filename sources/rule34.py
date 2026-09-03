@@ -9,8 +9,6 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 }
 
-RULE34_USER_ID = os.getenv("RULE34_USER_ID", "")
-RULE34_API_KEY = os.getenv("RULE34_API_KEY", "")
 
 EXCLUDED_TAGS = {
     "ai", "ai-created", "ai_art", "ai_assisted", "ai_generated",
@@ -34,10 +32,10 @@ async def search_rule34(tags: str, limit: int = 50):
         "json": 1,
     }
 
-    if RULE34_USER_ID:
-        params["user_id"] = RULE34_USER_ID
-    if RULE34_API_KEY:
-        params["api_key"] = RULE34_API_KEY
+    if uid := os.getenv("RULE34_USER_ID"):
+        params["user_id"] = uid
+    if key := os.getenv("RULE34_API_KEY"):
+        params["api_key"] = key
 
     try:
         async with aiohttp.ClientSession(headers=HEADERS) as session:

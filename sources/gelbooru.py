@@ -9,8 +9,6 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 }
 
-GELBOORU_USER_ID = os.getenv("GELBOORU_USER_ID", "")
-GELBOORU_API_KEY = os.getenv("GELBOORU_API_KEY", "")
 
 EXCLUDED_TAGS = {
     "yaoi", "bara", "gay", "male_only", "femboy", "trap",
@@ -31,7 +29,8 @@ async def _get_count(tags: str) -> int:
     params = {
         "page": "dapi", "s": "post", "q": "index",
         "json": 1, "limit": 1, "tags": tags,
-        "user_id": GELBOORU_USER_ID, "api_key": GELBOORU_API_KEY,
+        "user_id": os.getenv("GELBOORU_USER_ID", ""),
+        "api_key": os.getenv("GELBOORU_API_KEY", ""),
     }
     try:
         async with aiohttp.ClientSession(headers=HEADERS) as session:
@@ -59,7 +58,8 @@ async def search_gelbooru(user_tags: str, limit: int = 50):
         "page": "dapi", "s": "post", "q": "index",
         "json": 1, "limit": limit, "pid": pid,
         "tags": tags,
-        "user_id": GELBOORU_USER_ID, "api_key": GELBOORU_API_KEY,
+        "user_id": os.getenv("GELBOORU_USER_ID", ""),
+        "api_key": os.getenv("GELBOORU_API_KEY", ""),
     }
 
     try:
