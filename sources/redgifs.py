@@ -132,23 +132,26 @@ async def search_redgifs(query: str):
             return None
 
         random.shuffle(pool)
-        gif = pool[0]
-        _recent_ids.append(gif.get("id"))
+        picks = pool[:3]
 
-        urls = gif.get("urls", {})
-        video_url = urls.get("hd") or urls.get("sd") or urls.get("gif")
+        results = []
+        for gif in picks:
+            _recent_ids.append(gif.get("id"))
+            urls = gif.get("urls", {})
+            video_url = urls.get("hd") or urls.get("sd") or urls.get("gif")
+            results.append({
+                "id": gif.get("id"),
+                "title": query,
+                "url": f"https://www.redgifs.com/watch/{gif.get('id')}",
+                "video_url": video_url,
+                "thumbnail": urls.get("thumbnail") or urls.get("poster", ""),
+                "duration": round(gif.get("duration") or 0),
+                "views": gif.get("views") or 0,
+                "likes": gif.get("likes") or 0,
+                "tags": gif.get("tags") or [],
+            })
 
-        return {
-            "id": gif.get("id"),
-            "title": query,
-            "url": f"https://www.redgifs.com/watch/{gif.get('id')}",
-            "video_url": video_url,
-            "thumbnail": urls.get("thumbnail") or urls.get("poster", ""),
-            "duration": round(gif.get("duration") or 0),
-            "views": gif.get("views") or 0,
-            "likes": gif.get("likes") or 0,
-            "tags": gif.get("tags") or [],
-        }
+        return results
 
     except Exception as e:
         print(f"[REDGIFS ERROR] {type(e).__name__}: {e}")

@@ -231,27 +231,32 @@ async def gif(interaction: discord.Interaction, query: str, query2: str = None, 
     await interaction.response.defer()
 
     try:
-        result = await search_redgifs(full_query)
+        results = await search_redgifs(full_query)
 
-        if not result:
+        if not results:
             return await interaction.edit_original_response(content="❌ Không tìm thấy kết quả. Thử từ khóa khác.")
 
-        tags = result["tags"]
-        tag_str = " ".join(f"#{t}" for t in tags[:20]) if tags else "—"
+        for i, result in enumerate(results):
+            tags = result["tags"]
+            tag_str = " ".join(f"#{t}" for t in tags[:20]) if tags else "—"
 
-        embed = discord.Embed(
-            title=result["title"][:200],
-            url=result["url"],
-            description=tag_str,
-            color=discord.Color.dark_teal()
-        )
-        embed.add_field(name="⏱️ Thời lượng", value=f"{result['duration']}s", inline=True)
-        embed.add_field(name="👁️ Lượt xem", value=f"{result['views']:,}", inline=True)
-        embed.add_field(name="❤️ Likes", value=f"{result['likes']:,}", inline=True)
-        embed.set_footer(text=f"{interaction.user.display_name} • redgifs.com")
+            embed = discord.Embed(
+                title=f"[{i+1}/{len(results)}] {result['title'][:180]}",
+                url=result["url"],
+                description=tag_str,
+                color=discord.Color.dark_teal()
+            )
+            embed.add_field(name="⏱️ Thời lượng", value=f"{result['duration']}s", inline=True)
+            embed.add_field(name="👁️ Lượt xem", value=f"{result['views']:,}", inline=True)
+            embed.add_field(name="❤️ Likes", value=f"{result['likes']:,}", inline=True)
+            embed.set_footer(text=f"{interaction.user.display_name} • redgifs.com")
 
-        await interaction.edit_original_response(embed=embed)
-        await interaction.followup.send(result["video_url"])
+            if i == 0:
+                await interaction.edit_original_response(embed=embed)
+                await interaction.followup.send(result["video_url"])
+            else:
+                await interaction.followup.send(embed=embed)
+                await interaction.followup.send(result["video_url"])
 
     except Exception as e:
         print(f"[GIF] {e}")
