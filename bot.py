@@ -7,7 +7,6 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from sources.reddit_image import search_reddit_image
 from sources.redgifs import search_redgifs
 from sources.neko import get_neko, get_supported_types
 from sources.purr import get_purr, get_purr_types
@@ -89,7 +88,7 @@ async def on_ready():
     print(f"Bot online: {bot.user}")
     print(f"Servers: {len(bot.guilds)}")
     print("=" * 50)
-    await bot.change_presence(activity=discord.Game(name="/image | /video | NSFW"))
+    await bot.change_presence(activity=discord.Game(name="/gif | /gel | /r34 | NSFW"))
     try:
         synced = await bot.tree.sync()
         print(f"Đã sync {len(synced)} slash command(s)")
@@ -133,11 +132,6 @@ async def help_command(interaction: discord.Interaction):
         title="📖 NSFW Bot",
         description="**Chỉ dùng trong kênh NSFW**",
         color=discord.Color.dark_red()
-    )
-    embed.add_field(
-        name="🖼️ `/image <từ khóa>`",
-        value="Tìm ảnh NSFW (ưu tiên châu Á)\nVí dụ: `/image anal`",
-        inline=False
     )
     embed.add_field(
         name="🎞️ `/gif <từ khóa>`",
