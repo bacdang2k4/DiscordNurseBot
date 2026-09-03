@@ -12,6 +12,7 @@ from sources.redgifs import search_redgifs
 from sources.neko import get_neko, get_supported_types
 from sources.purr import get_purr, get_purr_types
 from sources.rule34 import search_rule34
+from sources.gelbooru import search_gelbooru
 
 
 # ============================================================
@@ -159,6 +160,11 @@ async def help_command(interaction: discord.Interaction):
         inline=False
     )
     embed.add_field(
+        name="🌐 `/gel <tags>`",
+        value="Tìm ảnh/video từ Gelbooru\nVí dụ: `/gel asian` | `/gel asian blowjob`",
+        inline=False
+    )
+    embed.add_field(
         name="🏓 `/ping`",
         value="Kiểm tra bot",
         inline=False
@@ -167,58 +173,13 @@ async def help_command(interaction: discord.Interaction):
 
 
 # ============================================================
-# /image <query>
-# ============================================================
-
-@bot.tree.command(name="image", description="Tìm ảnh NSFW từ Reddit (ưu tiên châu Á)")
-@app_commands.describe(query="Từ khóa tìm kiếm, ví dụ: anal, asian")
-async def image(interaction: discord.Interaction, query: str):
-    log(interaction, query=query)
-    if not is_nsfw(interaction):
-        return await interaction.response.send_message(
-            "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
-        )
-
-    if not await check_cooldown(interaction):
-        return
-
-    await interaction.response.defer()
-
-    try:
-        result = await search_reddit_image(query)
-
-        if not result or not is_valid_url(result.get("url")):
-            return await interaction.edit_original_response(content="❌ Không tìm thấy ảnh.")
-
-        embed = discord.Embed(
-            title=result["title"][:200],
-            url=result.get("permalink"),
-            color=discord.Color.dark_red()
-        )
-        embed.set_image(url=result["url"])
-        embed.add_field(name="Subreddit", value=f"r/{result['subreddit']}", inline=True)
-        embed.add_field(name="Upvotes", value=str(result["score"]), inline=True)
-        embed.set_footer(text=f"{interaction.user.display_name} • {query}")
-
-        await interaction.edit_original_response(embed=embed)
-
-    except Exception as e:
-        print(f"[IMAGE] {e}")
-        await interaction.edit_original_response(content="❌ Lỗi khi tìm ảnh.")
-
-
-# ============================================================
 # /gif <query>
 # ============================================================
 
 @bot.tree.command(name="gif", description="Tìm video/GIF NSFW từ RedGifs (play được trong Discord)")
-@app_commands.describe(
-    query="Tag thứ 1 (bắt buộc)",
-    query2="Tag thứ 2 (tuỳ chọn)",
-    query3="Tag thứ 3 (tuỳ chọn)",
-)
-async def gif(interaction: discord.Interaction, query: str, query2: str = None, query3: str = None):
-    full_query = " ".join(q for q in [query, query2, query3] if q)
+@app_commands.describe(query="Tags tìm kiếm, cách nhau bằng dấu cách. Ví dụ: asian blowjob pov")
+async def gif(interaction: discord.Interaction, query: str):
+    full_query = query.strip()
     log(interaction, query=full_query)
     if not is_nsfw(interaction):
         return await interaction.response.send_message(
@@ -399,6 +360,57 @@ async def r34(interaction: discord.Interaction, tags: str):
 
     except Exception as e:
         print(f"[RULE34 CMD] {e}")
+        await interaction.edit_original_response(content="❌ Lỗi khi tìm kiếm.")
+
+
+# ============================================================
+# /gel <tags>
+# ============================================================
+
+@bot.tree.command(name="gel", description="Tìm ảnh/video NSFW từ Gelbooru")
+@app_commands.describe(tags="Tags tìm kiếm, cách nhau bằng dấu cách. Ví dụ: asian blowjob")
+async def gel(interaction: discord.Interaction, tags: str):
+    full_tags = tags.strip()
+    log(interaction, tags=full_tags)
+    if not is_nsfw(interaction):
+        return await interaction.response.send_message(
+            "❌ Chỉ dùng trong kênh **NSFW**!", ephemeral=True
+        )
+
+    if not await check_cooldown(interaction):
+        return
+
+    await interaction.response.defer()
+
+    try:
+        result = await search_gelbooru(full_tags)
+
+        if not result:
+            return await interaction.edit_original_response(content="❌ Không tìm thấy kết quả. Thử tags khác.")
+
+        tag_list = result["tags"].split()[:10]
+        tag_display = " ".join(f"`{t}`" for t in tag_list)
+
+        embed = discord.Embed(
+            title=f"Gelbooru • {full_tags}",
+            url=result["post_url"],
+            color=discord.Color.from_rgb(0, 200, 100)
+        )
+        embed.add_field(name="Tags", value=tag_display or "—", inline=False)
+        embed.add_field(name="Score", value=str(result["score"]), inline=True)
+        embed.add_field(name="ID", value=str(result["id"]), inline=True)
+        embed.set_footer(text=f"{interaction.user.display_name} • gelbooru.com")
+
+        if result["is_video"]:
+            embed.description = f"🎬 **Video:** {result['url']}"
+            await interaction.edit_original_response(embed=embed)
+            await interaction.followup.send(result["url"])
+        else:
+            embed.set_image(url=result["url"])
+            await interaction.edit_original_response(embed=embed)
+
+    except Exception as e:
+        print(f"[GEL CMD] {e}")
         await interaction.edit_original_response(content="❌ Lỗi khi tìm kiếm.")
 
 
