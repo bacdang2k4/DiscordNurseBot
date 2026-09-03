@@ -236,27 +236,24 @@ async def gif(interaction: discord.Interaction, query: str, query2: str = None, 
         if not results:
             return await interaction.edit_original_response(content="❌ Không tìm thấy kết quả. Thử từ khóa khác.")
 
-        for i, result in enumerate(results):
-            tags = result["tags"]
-            tag_str = " ".join(f"#{t}" for t in tags[:20]) if tags else "—"
-
-            embed = discord.Embed(
-                title=f"[{i+1}/{len(results)}] {result['title'][:180]}",
-                url=result["url"],
-                description=tag_str,
-                color=discord.Color.dark_teal()
+        # Embed tổng hợp info cả 3 video
+        embed = discord.Embed(
+            title=f"🎞️ {full_query} — {len(results)} video",
+            color=discord.Color.dark_teal()
+        )
+        for i, r in enumerate(results):
+            tags = r["tags"]
+            tag_str = " ".join(f"#{t}" for t in tags[:10]) if tags else "—"
+            embed.add_field(
+                name=f"[{i+1}] ⏱️{r['duration']}s  👁️{r['views']:,}  ❤️{r['likes']:,}",
+                value=tag_str,
+                inline=False
             )
-            embed.add_field(name="⏱️ Thời lượng", value=f"{result['duration']}s", inline=True)
-            embed.add_field(name="👁️ Lượt xem", value=f"{result['views']:,}", inline=True)
-            embed.add_field(name="❤️ Likes", value=f"{result['likes']:,}", inline=True)
-            embed.set_footer(text=f"{interaction.user.display_name} • redgifs.com")
+        embed.set_footer(text=f"{interaction.user.display_name} • redgifs.com")
 
-            if i == 0:
-                await interaction.edit_original_response(embed=embed)
-                await interaction.followup.send(result["video_url"])
-            else:
-                await interaction.followup.send(embed=embed)
-                await interaction.followup.send(result["video_url"])
+        await interaction.edit_original_response(embed=embed)
+        # Gửi tất cả 3 URL trong 1 tin → Discord preview cả 3 inline
+        await interaction.followup.send("\n".join(r["video_url"] for r in results))
 
     except Exception as e:
         print(f"[GIF] {e}")
