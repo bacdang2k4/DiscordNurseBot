@@ -395,13 +395,8 @@ async def gel(interaction: discord.Interaction, tags: str):
         embed.add_field(name="ID", value=str(result["id"]), inline=True)
         embed.set_footer(text=f"{interaction.user.display_name} • gelbooru.com")
 
-        if result["is_video"]:
-            embed.description = f"🎬 **Video:** {result['url']}"
-            await interaction.edit_original_response(embed=embed)
-            await interaction.followup.send(result["url"])
-        else:
-            embed.set_image(url=result["url"])
-            await interaction.edit_original_response(embed=embed)
+        await interaction.edit_original_response(embed=embed)
+        await interaction.followup.send(result["url"])
 
     except Exception as e:
         print(f"[GEL CMD] {e}")
