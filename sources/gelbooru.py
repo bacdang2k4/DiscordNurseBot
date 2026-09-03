@@ -11,13 +11,20 @@ HEADERS = {
 
 
 EXCLUDED_TAGS = {
-    "yaoi", "bara", "gay", "male_only", "femboy", "trap",
-    "transgender", "shemale", "ladyboy", "crossdressing",
+    # Gay
+    "yaoi", "bara", "gay", "male_only", "multiple_boys",
+    # Femboy / trans
+    "femboy", "trap", "transgender", "shemale", "ladyboy", "crossdressing",
+    # Bestiality
+    "animal_penis", "zoophilia", "bestiality",
+    # AI
+    "ai-generated", "ai_generated", "ai-created", "ai_created",
 }
 
 
 def _build_tags(user_tags: str) -> str:
-    return f"{user_tags.strip()} rating:explicit"
+    tags = [t.strip().replace(" ", "_") for t in user_tags.split(",") if t.strip()]
+    return " ".join(tags) + " rating:explicit"
 
 
 def _is_clean(post: dict) -> bool:
